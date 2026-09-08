@@ -125,7 +125,9 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
           ] }
         ]
       }],
-      users: { local: emptyUser() }
+      users: { local: emptyUser() },
+      categories: [{ id: 'cat_textbook', name: '教材讲义' }, { id: 'cat_exam', name: '真题试卷' }, { id: 'cat_video', name: '网课视频' }],
+      materials: []
     };
   }
 
@@ -136,6 +138,8 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     if (!o.subjects) o.subjects = [];
     if (!o.users) o.users = {};
     if (!o.users.local) o.users.local = emptyUser();
+    if (!o.materials) o.materials = [];
+    if (!o.categories) o.categories = [];
     return o;
   }
   function loadStore() {
@@ -257,6 +261,7 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
   var ui = {
     page: 'home', learnSel: null, quiz: null, timer: newTimer(),
     manage: { page: 'list', subjectId: null, chapterId: null, form: null },
+    lib: { q: '', cat: '', type: '', sort: 'recent', subjFilter: '', form: null, catMgr: false, expanded: null, keepFocus: null },
     statsDays: 30, toast: null, toastTimer: null
   };
   function toast(msg) {
@@ -591,6 +596,313 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     input.value = '';
   }
 
+  /* ---------- 资料库：文件存储（IndexedDB） ---------- */
+  var DB_NAME = 'learnhub-files', DB_STORE = 'files', dbPromise = null, filesOk = true;
+  function openDB() {
+    if (dbPromise) return dbPromise;
+    dbPromise = new Promise(function (resolve, reject) {
+      if (typeof indexedDB === 'undefined') { reject(new Error('no-idb')); return; }
+      var req = indexedDB.open(DB_NAME, 1);
+      req.onupgradeneeded = function () {
+        if (!req.result.objectStoreNames.contains(DB_STORE)) req.result.createObjectStore(DB_STORE, { keyPath: 'id' });
+      };
+      req.onsuccess = function () { resolve(req.result); };
+      req.onerror = function () { reject(req.error || new Error('idb-error')); };
+    });
+    return dbPromise;
+  }
+  function filePut(id, blob, name) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).put({ id: id, blob: blob, name: name });
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { reject(tx.error); };
+      });
+    });
+  }
+  function fileGet(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve, reject) {
+        var tx = db.transaction(DB_STORE, 'readonly');
+        var r = tx.objectStore(DB_STORE).get(id);
+        r.onsuccess = function () { resolve(r.result ? r.result.blob : null); };
+        r.onerror = function () { reject(r.error); };
+      });
+    });
+  }
+  function fileDel(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (resolve) {
+        var tx = db.transaction(DB_STORE, 'readwrite');
+        tx.objectStore(DB_STORE).delete(id);
+        tx.oncomplete = function () { resolve(true); };
+        tx.onerror = function () { resolve(false); };
+      });
+    }).catch(function () { return false; });
+  }
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result).split(',')[1] || ''); };
+      fr.onerror = function () { reject(fr.error); };
+      fr.readAsDataURL(blob);
+    });
+  }
+  function base64ToBlob(b64, mime) {
+    var bin = atob(b64 || ''), len = bin.length, arr = new Uint8Array(len);
+    for (var i = 0; i < len; i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], { type: mime || 'application/octet-stream' });
+  }
+  function libIcon(m) {
+    if (m.kind === 'link') return '🔗';
+    if (m.kind === 'note') return '📝';
+    var n = (m.fileName || '').toLowerCase();
+    if (/\.pdf$/.test(n)) return '📕';
+    if (/\.(ppt|pptx)$/.test(n)) return '📊';
+    if (/\.(doc|docx)$/.test(n)) return '📘';
+    if (/\.(xls|xlsx|csv)$/.test(n)) return '📗';
+    if (/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/.test(n)) return '🖼️';
+    if (/\.(mp4|mov|avi|mkv|webm)$/.test(n)) return '🎬';
+    if (/\.(mp3|wav|m4a|aac)$/.test(n)) return '🎧';
+    if (/\.(zip|rar|7z)$/.test(n)) return '🗜️';
+    return '📄';
+  }
+  function kindLabel(k) { return k === 'link' ? '链接' : k === 'note' ? '笔记' : '文件'; }
+  function statusLabel(s) { return s === 'done' ? '已掌握' : s === 'doing' ? '学习中' : '未开始'; }
+  function fmtSize(n) {
+    n = n || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+  }
+  function catName(id) {
+    var c = store.categories.filter(function (x) { return x.id === id; })[0];
+    return c ? c.name : '未分类';
+  }
+  function materialById(id) { return store.materials.filter(function (x) { return x.id === id; })[0]; }
+
+  ACT.libAdd = function () {
+    var f = ui.lib.form; if (!f) return;
+    var title = (val('lib-title') || '').trim();
+    var cat = val('lib-cat-sel') || '';
+    var tags = (val('lib-tags') || '').split(/[,，\s]+/).filter(function (x) { return !!x; });
+    var subjId = val('lib-subj-sel') || '', chapId = val('lib-chap') || '';
+    var note = val('lib-note') || '';
+    if (f.id) {
+      var m = materialById(f.id); if (!m) return;
+      if (title) m.title = title;
+      m.cat = cat; m.tags = tags; m.subjectId = subjId; m.chapterId = chapId; m.note = note;
+      if (m.kind === 'link') { var u = (val('lib-url') || '').trim(); if (u) m.url = /^https?:\/\//i.test(u) ? u : 'https://' + u; }
+      if (m.kind === 'note') m.text = val('lib-text') || '';
+      ui.lib.form = null; saveStore(); render(); toast('资料已更新'); return;
+    }
+    if (f.kind === 'file') {
+      var inp = document.getElementById('lib-files');
+      var files = inp && inp.files ? Array.prototype.slice.call(inp.files) : [];
+      if (!files.length) { toast('请选择要上传的文件'); return; }
+      if (!filesOk) { toast('当前环境不支持文件存储，请使用在线网址版'); return; }
+      var done = 0, failed = false;
+      files.forEach(function (file) {
+        var id = genId('m');
+        store.materials.push({
+          id: id, kind: 'file', title: title || file.name, cat: cat, tags: tags, subjectId: subjId, chapterId: chapId,
+          note: note, fileName: file.name, mime: file.type || '', size: file.size,
+          status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
+        });
+        filePut(id, file, file.name).then(function () {
+          done++;
+          if (done === files.length && !failed) { saveStore(); ui.lib.form = null; render(); toast('已添加 ' + done + ' 份资料'); }
+        }).catch(function () {
+          failed = true; filesOk = false;
+          saveStore(); ui.lib.form = null; render();
+          toast('文件保存失败：此环境不支持本地大文件存储，请用在线网址版');
+        });
+      });
+      return;
+    }
+    if (f.kind === 'link') {
+      var url = (val('lib-url') || '').trim();
+      if (!url) { toast('请填写网址'); return; }
+      store.materials.push({
+        id: genId('m'), kind: 'link', title: title || url, cat: cat, tags: tags, subjectId: subjId, chapterId: chapId,
+        note: note, url: /^https?:\/\//i.test(url) ? url : 'https://' + url,
+        status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
+      });
+    } else {
+      var text = (val('lib-text') || '').trim();
+      if (!text && !title) { toast('请填写笔记内容'); return; }
+      store.materials.push({
+        id: genId('m'), kind: 'note', title: title || text.slice(0, 24), cat: cat, tags: tags, subjectId: subjId, chapterId: chapId,
+        note: note, text: text, status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
+      });
+    }
+    saveStore(); ui.lib.form = null; render(); toast('资料已添加');
+  };
+  ACT.libForm = function (kind) {
+    ui.lib.form = { id: null, kind: kind || 'file', subjectId: ui.lib.subjFilter || '', chapterId: '', cat: ui.lib.cat || '' };
+    render();
+  };
+  ACT.libEdit = function (id) {
+    var m = materialById(id); if (!m) return;
+    ui.lib.form = {
+      id: m.id, kind: m.kind, title: m.title, cat: m.cat || '', subjectId: m.subjectId || '',
+      chapterId: m.chapterId || '', tags: (m.tags || []).join(' '), url: m.url || '', text: m.text || '', note: m.note || ''
+    };
+    render();
+  };
+  ACT.libCancel = function () { ui.lib.form = null; render(); };
+  ACT.libOpen = function (id) {
+    var m = materialById(id); if (!m) return;
+    m.opens = (m.opens || 0) + 1;
+    m.lastOpenAt = Date.now();
+    if (m.status === 'new') m.status = 'doing';
+    if (m.kind === 'note') { ui.lib.expanded = ui.lib.expanded === id ? null : id; saveStore(); render(); return; }
+    if (m.kind === 'link') { window.open(m.url, '_blank'); saveStore(); render(); return; }
+    fileGet(id).then(function (blob) {
+      if (!blob) { toast('文件内容已丢失，请重新上传'); return; }
+      var u = URL.createObjectURL(blob);
+      var w = window.open(u, '_blank');
+      if (!w) toast('浏览器拦截了新窗口，请允许本站弹出窗口');
+      setTimeout(function () { URL.revokeObjectURL(u); }, 180000);
+      saveStore(); render();
+    }).catch(function () { toast('无法读取文件内容'); });
+  };
+  ACT.libDownload = function (id) {
+    var m = materialById(id); if (!m) return;
+    if (m.kind !== 'file') { ACT.libOpen(id); return; }
+    fileGet(id).then(function (blob) {
+      if (!blob) { toast('文件内容已丢失'); return; }
+      var u = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = u; a.download = m.fileName || m.title;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function () { URL.revokeObjectURL(u); }, 60000);
+    });
+  };
+  ACT.libStatus = function (id) {
+    var m = materialById(id); if (!m) return;
+    m.status = m.status === 'new' ? 'doing' : m.status === 'doing' ? 'done' : 'new';
+    saveStore(); render();
+  };
+  ACT.libFav = function (id) {
+    var m = materialById(id); if (!m) return;
+    m.fav = !m.fav; saveStore(); render();
+  };
+  ACT.libDel = function (id) {
+    var m = materialById(id); if (!m) return;
+    if (!confirm('确定删除资料「' + m.title + '」？' + (m.kind === 'file' ? '（文件内容一并删除）' : ''))) return;
+    store.materials = store.materials.filter(function (x) { return x.id !== id; });
+    if (m.kind === 'file') fileDel(id);
+    saveStore(); render(); toast('已删除');
+  };
+  ACT.libCatMgr = function () { ui.lib.catMgr = !ui.lib.catMgr; render(); };
+  ACT.libCatAdd = function () {
+    var n = (val('lib-cat-new') || '').trim(); if (!n) return;
+    store.categories.push({ id: genId('cat'), name: n });
+    saveStore(); render(); toast('分类已添加');
+  };
+  ACT.libCatRename = function (id) {
+    var c = store.categories.filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    var n = prompt('修改分类名称', c.name); if (n === null) return;
+    c.name = n.trim() || c.name; saveStore(); render();
+  };
+  ACT.libCatDel = function (id) {
+    var c = store.categories.filter(function (x) { return x.id === id; })[0]; if (!c) return;
+    if (!confirm('删除分类「' + c.name + '」？该分类下的资料会变为「未分类」。')) return;
+    store.categories = store.categories.filter(function (x) { return x.id !== id; });
+    store.materials.forEach(function (m) { if (m.cat === id) m.cat = ''; });
+    saveStore(); render();
+  };
+  ACT.libFilterSubject = function (id) { ui.lib.subjFilter = id; ui.page = 'lib'; ui.quiz = null; render(); };
+  ACT.libExport = function (withFiles) {
+    var includeFiles = String(withFiles) === '1';
+    var out = {
+      type: 'learnhub-library', version: 1, exportedAt: Date.now(),
+      categories: store.categories.slice(),
+      materials: store.materials.map(function (m) {
+        var o = {}; for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) o[k] = m[k];
+        return o;
+      })
+    };
+    var jobs = [];
+    if (includeFiles) {
+      var total = 0;
+      store.materials.forEach(function (m) { if (m.kind === 'file') total += m.size || 0; });
+      if (total > 200 * 1024 * 1024) { toast('资料超过 200MB，请改用「仅导出索引」'); return; }
+      store.materials.forEach(function (m) {
+        if (m.kind !== 'file') return;
+        jobs.push(fileGet(m.id).then(function (blob) {
+          if (!blob) return;
+          return blobToBase64(blob).then(function (b64) {
+            for (var i = 0; i < out.materials.length; i++) {
+              if (out.materials[i].id === m.id) out.materials[i].file = { name: m.fileName, mime: m.mime, base64: b64 };
+            }
+          });
+        }).catch(function () {}));
+      });
+    }
+    Promise.all(jobs).then(function () {
+      var blob = new Blob([JSON.stringify(out)], { type: 'application/json' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '资料库备份-' + dateKey(new Date()) + (includeFiles ? '-含文件' : '') + '.json';
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      toast('资料库已导出');
+    });
+  };
+  ACT.libImport = function () { var f = document.getElementById('lib-import'); if (f) f.click(); };
+  function onLibImportFile(input) {
+    var f = input.files && input.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      var obj;
+      try { obj = JSON.parse(String(r.result)); } catch (e) { toast('❌ 文件格式不正确'); return; }
+      if (!obj || obj.type !== 'learnhub-library' || !Array.isArray(obj.materials)) { toast('❌ 不是资料库备份文件'); return; }
+      var idMap = {};
+      (obj.categories || []).forEach(function (c) {
+        if (!c || !c.name) return;
+        var hit = store.categories.filter(function (x) { return x.name === c.name; })[0];
+        if (hit) { idMap[c.id] = hit.id; return; }
+        var nc = { id: genId('cat'), name: c.name };
+        store.categories.push(nc); idMap[c.id] = nc.id;
+      });
+      var added = 0, pending = 0, failed = 0;
+      obj.materials.forEach(function (m) {
+        if (!m || !m.kind) return;
+        var id = genId('m');
+        var copy = {};
+        for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k) && k !== 'file') copy[k] = m[k];
+        copy.id = id;
+        copy.cat = idMap[m.cat] || '';
+        copy.opens = copy.opens || 0;
+        copy.lastOpenAt = copy.lastOpenAt || 0;
+        copy.createdAt = copy.createdAt || Date.now();
+        if (copy.kind === 'file') {
+          if (!m.file || !m.file.base64) { return; }
+          copy.fileName = m.file.name || copy.fileName || 'file';
+          copy.mime = m.file.mime || copy.mime || '';
+          var blob = base64ToBlob(m.file.base64, copy.mime);
+          copy.size = blob.size;
+          store.materials.push(copy);
+          pending++;
+          filePut(id, blob, copy.fileName).then(function () {
+            pending--;
+            if (pending === 0) { saveStore(); render(); toast('已导入 ' + added + ' 份资料'); }
+          }).catch(function () { failed++; pending--; if (pending === 0) { saveStore(); render(); toast('部分文件保存失败'); } });
+        } else {
+          store.materials.push(copy);
+        }
+        added++;
+      });
+      saveStore();
+      if (pending === 0) { render(); toast('已导入 ' + added + ' 份资料'); }
+    };
+    r.readAsText(f);
+    input.value = '';
+  }
+
   /* ---------- 渲染 ---------- */
   function chip(text, kind) { return '<span class="chip' + (kind ? ' chip-' + kind : '') + '">' + esc(text) + '</span>'; }
   function btn(label, act, arg, kind, cls, extra) {
@@ -601,6 +913,7 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     return '<div class="nav">' +
       '<button class="nav-item' + (ui.page === 'home' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="home">🏠 首页</button>' +
       '<button class="nav-item' + (ui.page === 'learn' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="learn">📚 学习</button>' +
+      '<button class="nav-item' + (ui.page === 'lib' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="lib">📂 资料库</button>' +
       '<button class="nav-item' + (ui.page === 'timer' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="timer">⏲ 计时学习</button>' +
       '<button class="nav-item' + (ui.page === 'stats' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="stats">⏱ 时间统计</button>' +
       '<button class="nav-item' + (ui.page === 'manage' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="manage">✏️ 管理题库</button>' +
@@ -657,6 +970,13 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
         v.recents.map(function (l) {
           return '<div class="row" style="margin-top:6px"><span class="mut">' + fmtDate(l.at) + '</span><span class="grow" style="font-size:13px">' + esc(l.subject + ' / ' + l.chapter) + '</span>' + chip(MODE_LABEL[l.mode] || l.mode, l.mode === 'review' ? 'gold' : 'ok') + '<span class="mut">' + fmtLong(l.seconds) + '</span></div>';
         }).join('')) + '</div>';
+    html += '<div class="card"><div class="card-title"><span>📂 资料库</span><span class="mut">' + store.materials.length + ' 份</span></div>' +
+      (store.materials.length === 0 ? '<div class="empty">还没有资料，去「资料库」上传 PDF / PPT / 图片或收藏网址</div>' :
+        '<div class="row" style="margin-top:4px">' + chip('文件 ' + store.materials.filter(function (m) { return m.kind === 'file'; }).length) + chip('链接 ' + store.materials.filter(function (m) { return m.kind === 'link'; }).length) + chip('笔记 ' + store.materials.filter(function (m) { return m.kind === 'note'; }).length) + chip('已掌握 ' + store.materials.filter(function (m) { return m.status === 'done'; }).length, 'ok') + '</div>' +
+        store.materials.slice().sort(function (a, b) { return (b.lastOpenAt || 0) - (a.lastOpenAt || 0); }).slice(0, 3).map(function (m) {
+          return '<div class="row" style="margin-top:6px">' + libIcon(m) + '<span class="grow" style="font-size:13px">' + esc(m.title) + '</span>' + btn('打开', 'libOpen', m.id, 'p', 'btn-sm') + '</div>';
+        }).join('')) +
+      '<div class="row" style="margin-top:8px">' + btn('进入资料库', 'nav', 'lib', null, 'btn-sm') + '</div></div>';
     html += '<div class="card"><div class="row"><span class="grow" style="font-size:13px">数据备份</span>' + btn('导出备份', 'exportData', null, null, 'btn-sm') + btn('导入数据', 'importData', null, null, 'btn-sm') + btn('重置进度', 'resetProgress', null, 'bad', 'btn-sm') + '</div>' +
       (persistOk ? '' : '<div class="mut" style="margin-top:6px;color:var(--bad)">⚠️ 当前浏览器不支持本地存储，数据不会自动保存，请用导出备份。</div>') + '</div>';
     html += '</div></div>';
@@ -677,7 +997,7 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     }
     var s = findSubj(ui.learnSel);
     if (!s) { ui.learnSel = null; return pageLearn(); }
-    html += '<div class="row" style="margin-bottom:10px">' + btn('← 返回科目列表', 'learnBack') + '<span style="font-weight:800;font-size:16px">' + esc(s.name) + '</span></div>';
+    html += '<div class="row" style="margin-bottom:10px">' + btn('← 返回科目列表', 'learnBack') + '<span style="font-weight:800;font-size:16px">' + esc(s.name) + '</span>' + btn('📂 本科目资料', 'libFilterSubject', s.id, null, 'btn-sm') + '</div>';
     if (s.chapters.length === 0) return html + '<div class="card"><div class="empty">这个科目还没有章节</div></div>';
     return html + s.chapters.map(function (c) {
       var wc = 0;
@@ -824,6 +1144,125 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     html += '</div></div>';
     return html;
   }
+  function libFiltered() {
+    var L = ui.lib, q = (L.q || '').toLowerCase();
+    var list = store.materials.filter(function (m) {
+      if (L.cat === '__none__') { if (m.cat) return false; }
+      else if (L.cat && (m.cat || '') !== L.cat) return false;
+      if (L.type && m.kind !== L.type) return false;
+      if (L.subjFilter && (m.subjectId || '') !== L.subjFilter) return false;
+      if (q) {
+        var hay = ((m.title || '') + ' ' + (m.tags || []).join(' ') + ' ' + (m.note || '') + ' ' + (m.text || '') + ' ' + (m.fileName || '') + ' ' + (m.url || '')).toLowerCase();
+        if (hay.indexOf(q) < 0) return false;
+      }
+      return true;
+    });
+    list.sort(function (a, b) {
+      if (!!a.fav !== !!b.fav) return a.fav ? -1 : 1;
+      if (L.sort === 'name') return String(a.title).localeCompare(String(b.title), 'zh');
+      if (L.sort === 'opens') return (b.opens || 0) - (a.opens || 0);
+      if (L.sort === 'added') return (b.createdAt || 0) - (a.createdAt || 0);
+      return (b.lastOpenAt || b.createdAt || 0) - (a.lastOpenAt || a.createdAt || 0);
+    });
+    return list;
+  }
+  function pageLib() {
+    var L = ui.lib;
+    var html = '<div class="card">' +
+      '<div class="row"><input id="lib-q" type="text" placeholder="搜索标题 / 标签 / 备注 / 文件名" value="' + esc(L.q) + '" style="flex:1;min-width:180px">' +
+      '<select id="lib-cat" style="max-width:170px"><option value="">全部分类</option>' +
+      store.categories.map(function (c) { return '<option value="' + c.id + '"' + (L.cat === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') +
+      '<option value="__none__"' + (L.cat === '__none__' ? ' selected' : '') + '>未分类</option></select>' +
+      '<select id="lib-type" style="max-width:130px"><option value="">全部类型</option>' +
+      ['file', 'link', 'note'].map(function (k) { return '<option value="' + k + '"' + (L.type === k ? ' selected' : '') + '>' + kindLabel(k) + '</option>'; }).join('') + '</select>' +
+      '<select id="lib-sort" style="max-width:150px">' +
+      [['recent', '最近打开'], ['added', '最近添加'], ['opens', '使用最多'], ['name', '按名称']].map(function (o) { return '<option value="' + o[0] + '"' + (L.sort === o[0] ? ' selected' : '') + '>' + o[1] + '</option>'; }).join('') + '</select></div>' +
+      '<div class="row" style="margin-top:8px">' +
+      btn('＋ 上传文件', 'libForm', 'file', 'p', 'btn-sm') +
+      btn('＋ 添加链接', 'libForm', 'link', null, 'btn-sm') +
+      btn('＋ 写笔记', 'libForm', 'note', null, 'btn-sm') +
+      btn('分类管理', 'libCatMgr', null, null, 'btn-sm') +
+      btn('导入资料包', 'libImport', null, null, 'btn-sm') +
+      btn('导出(含文件)', 'libExport', '1', null, 'btn-sm') +
+      btn('导出(仅索引)', 'libExport', '0', null, 'btn-sm') +
+      '<span class="grow"></span>' +
+      '<select id="lib-subj" style="max-width:190px"><option value="">全部科目</option>' +
+      store.subjects.map(function (s) { return '<option value="' + s.id + '"' + (L.subjFilter === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' +
+      '</div>' +
+      '<div class="mut" style="margin-top:6px">共 ' + store.materials.length + ' 份资料' +
+      (filesOk ? '' : ' · <span style="color:var(--bad)">当前环境无法保存大文件，请使用在线网址版</span>') + '</div></div>';
+    if (L.catMgr) {
+      html += '<div class="card"><div class="card-title"><span>分类管理</span></div><div class="row">' +
+        '<input id="lib-cat-new" type="text" placeholder="新分类名称，如：公式手册" style="flex:1;min-width:180px">' + btn('添加分类', 'libCatAdd', null, 'ok', 'btn-sm') + '</div>' +
+        (store.categories.length === 0 ? '<div class="empty">还没有分类</div>' :
+          store.categories.map(function (c) {
+            var n = store.materials.filter(function (m) { return m.cat === c.id; }).length;
+            return '<div class="row" style="margin-top:6px"><span class="grow">' + esc(c.name) + ' <span class="mut">(' + n + ')</span></span>' + btn('重命名', 'libCatRename', c.id, null, 'btn-sm') + btn('删除', 'libCatDel', c.id, 'bad', 'btn-sm') + '</div>';
+          }).join('')) + '</div>';
+    }
+    if (L.form) html += formLib(L.form);
+    var list = libFiltered();
+    if (list.length === 0) {
+      html += '<div class="card"><div class="empty">' + (store.materials.length === 0 ? '还没有资料。上传 PDF / PPT / 图片，或收藏网址、写笔记，随时一键打开。' : '没有符合条件的资料') + '</div></div>';
+      return html;
+    }
+    html += list.map(function (m) {
+      var subj = m.subjectId ? findSubj(m.subjectId) : null;
+      var chap = subj && m.chapterId ? findChap(subj, m.chapterId) : null;
+      var meta = [catName(m.cat)];
+      if (m.kind === 'file') meta.push(fmtSize(m.size));
+      if (m.kind === 'link') meta.push('网址');
+      if (subj) meta.push(subj.name + (chap ? ' / ' + chap.name : ''));
+      if (m.opens) meta.push('打开 ' + m.opens + ' 次');
+      if (m.lastOpenAt) meta.push('最近 ' + fmtDate(m.lastOpenAt) + ' ' + fmtClock(m.lastOpenAt));
+      var h2 = '<div class="card"><div class="row">' +
+        '<span style="font-size:22px">' + libIcon(m) + '</span>' +
+        '<span class="grow"><div style="font-weight:700">' + (m.fav ? '⭐ ' : '') + esc(m.title) + '</div>' +
+        '<div class="mut">' + esc(meta.join(' · ')) + '</div>' +
+        ((m.tags && m.tags.length) ? '<div style="margin-top:2px">' + m.tags.map(function (t) { return chip('#' + t); }).join(' ') + '</div>' : '') +
+        (m.note ? '<div class="mut" style="margin-top:2px">备注：' + esc(m.note) + '</div>' : '') +
+        '</span>' +
+        chip(statusLabel(m.status), m.status === 'done' ? 'ok' : m.status === 'doing' ? 'gold' : '') +
+        btn('打开', 'libOpen', m.id, 'p', 'btn-sm') +
+        (m.kind === 'file' ? btn('下载', 'libDownload', m.id, null, 'btn-sm') : '') +
+        btn('状态', 'libStatus', m.id, null, 'btn-sm') +
+        btn(m.fav ? '★' : '☆', 'libFav', m.id, null, 'btn-sm') +
+        btn('编辑', 'libEdit', m.id, null, 'btn-sm') +
+        btn('删除', 'libDel', m.id, 'bad', 'btn-sm') +
+        '</div>';
+      if (m.kind === 'note' && L.expanded === m.id) h2 += '<div class="note" style="white-space:pre-wrap;margin-top:8px">' + esc(m.text || '') + '</div>';
+      if (m.kind === 'link') h2 += '<div class="mut" style="margin-top:6px;word-break:break-all">' + esc(m.url) + '</div>';
+      return h2 + '</div>';
+    }).join('');
+    return html;
+  }
+  function formLib(f) {
+    var html = '<div class="card"><div class="card-title"><span>' + (f.id ? '编辑资料' : '添加资料') + '</span><span class="row"><span class="mut">类型</span>' +
+      (f.id ? '<span class="mut">' + kindLabel(f.kind) + '（不可更改）</span>' :
+        ['file', 'link', 'note'].map(function (k) { return btn(kindLabel(k), 'libForm', k, f.kind === k ? 'p' : null, 'btn-sm'); }).join('')) + '</span></div>';
+    html += '<input id="lib-title" type="text" placeholder="标题（可留空）" value="' + esc(f.title || '') + '">';
+    if (f.kind === 'file' && !f.id) {
+      html += '<div class="row" style="margin-top:8px"><input id="lib-files" type="file" multiple style="padding:6px;border:1px dashed var(--line);border-radius:8px"></div>' +
+        '<div class="mut" style="margin-top:4px">支持 PDF / PPT / Word / Excel / 图片 / 音视频 / 压缩包，可一次选多个；文件只保存在你本机浏览器中。</div>';
+    }
+    if (f.kind === 'link') html += '<input id="lib-url" type="text" placeholder="https://…（网址）" value="' + esc(f.url || '') + '" style="margin-top:8px">';
+    if (f.kind === 'note') html += '<textarea id="lib-text" placeholder="笔记内容" style="margin-top:8px;min-height:120px">' + esc(f.text || '') + '</textarea>';
+    html += '<div class="row" style="margin-top:8px">' +
+      '<select id="lib-cat-sel" style="max-width:180px"><option value="">未分类</option>' +
+      store.categories.map(function (c) { return '<option value="' + c.id + '"' + (f.cat === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' +
+      '<input id="lib-tags" type="text" placeholder="标签，空格分隔，如 高数 公式" value="' + esc(f.tags || '') + '" style="flex:1;min-width:160px">' +
+      '</div>';
+    var subj = f.subjectId ? findSubj(f.subjectId) : null;
+    html += '<div class="row" style="margin-top:8px">' +
+      '<select id="lib-subj-sel" style="flex:1;min-width:170px"><option value="">关联科目（可选）</option>' +
+      store.subjects.map(function (s) { return '<option value="' + s.id + '"' + (f.subjectId === s.id ? ' selected' : '') + '>' + esc(s.name) + '</option>'; }).join('') + '</select>' +
+      '<select id="lib-chap" style="flex:1;min-width:170px"' + (subj ? '' : ' disabled') + '><option value="">不限章节</option>' +
+      (subj ? subj.chapters.map(function (c) { return '<option value="' + c.id + '"' + (f.chapterId === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') : '') + '</select>' +
+      '</div>';
+    html += '<input id="lib-note" type="text" placeholder="备注（可选）" value="' + esc(f.note || '') + '" style="margin-top:8px">';
+    html += '<div class="row" style="margin-top:10px">' + btn(f.id ? '保存修改' : '保存资料', 'libAdd', null, 'ok') + btn('取消', 'libCancel') + '</div></div>';
+    return html;
+  }
   function pageManage() {
     var m = ui.manage;
     if (m.page === 'list') {
@@ -899,10 +1338,16 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     if (ui.quiz) body = pageQuiz();
     else if (ui.page === 'home') body = pageHome(v);
     else if (ui.page === 'learn') body = pageLearn();
+    else if (ui.page === 'lib') body = pageLib();
     else if (ui.page === 'timer') body = pageTimer();
     else if (ui.page === 'stats') body = pageStats();
     else body = pageManage();
     app.innerHTML = header(v) + body + (ui.toast ? '<div class="toast">' + esc(ui.toast) + '</div>' : '');
+    if (ui.lib.keepFocus) {
+      var fi = document.getElementById(ui.lib.keepFocus);
+      ui.lib.keepFocus = null;
+      if (fi && fi.focus) { fi.focus(); try { fi.setSelectionRange(fi.value.length, fi.value.length); } catch (e) {} }
+    }
   }
 
   /* ---------- 事件 ---------- */
@@ -931,6 +1376,14 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     if (el.id === 't-chap') { ui.timer.chapId = el.value; render(); return; }
     if (el.id === 't-note') { ui.timer.note = el.value; return; }
     if (el.id === 'import-file') { onImportFile(el); return; }
+    if (el.id === 'lib-import') { onLibImportFile(el); return; }
+    if (el.id === 'lib-q') { ui.lib.q = el.value; ui.lib.keepFocus = 'lib-q'; render(); return; }
+    if (el.id === 'lib-cat') { ui.lib.cat = el.value; render(); return; }
+    if (el.id === 'lib-type') { ui.lib.type = el.value; render(); return; }
+    if (el.id === 'lib-sort') { ui.lib.sort = el.value; render(); return; }
+    if (el.id === 'lib-subj') { ui.lib.subjFilter = el.value; render(); return; }
+    if (el.id === 'lib-subj-sel') { ui.lib.form.subjectId = el.value; ui.lib.form.chapterId = ''; render(); return; }
+    if (el.id === 'lib-chap') { if (ui.lib.form) ui.lib.form.chapterId = el.value; return; }
   }
   function boot() {
     document.addEventListener('click', onClick);
@@ -938,6 +1391,9 @@ input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
     var imp = document.createElement('input');
     imp.type = 'file'; imp.accept = '.json,application/json'; imp.id = 'import-file'; imp.style.display = 'none';
     document.body.appendChild(imp);
+    var imp2 = document.createElement('input');
+    imp2.type = 'file'; imp2.accept = '.json,application/json'; imp2.id = 'lib-import'; imp2.style.display = 'none';
+    document.body.appendChild(imp2);
     render();
   }
   try { if (typeof window !== 'undefined') window.__learnhub = { ui: ui, render: render, ACT: ACT }; } catch (e) {}
