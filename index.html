@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>学习空间 · 一站式个性化学习平台</title>
+<title>学习空间 v1.0 · 一站式个性化学习平台</title>
 <style>
 :root{--bg:#f5f7fb;--card:#ffffff;--line:#e3e8ef;--text:#1f2937;--mut:#6b7280;--acc:#4f6ef2;--acc-soft:#eef1fe;--ok:#0f9d58;--ok-soft:#e6f6ee;--bad:#e5484d;--bad-soft:#fdeeee;--gold:#d97706;--gold-soft:#fdf1dd}
 *{box-sizing:border-box}
@@ -34,6 +34,8 @@ textarea{min-height:52px;resize:vertical}
 .nav-item-on{background:var(--acc-soft);color:var(--acc);font-weight:700}
 .tab{font-size:13px;padding:5px 14px;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:var(--card);color:var(--mut);font-family:inherit}
 .tab-on{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:700}
+.crumb{font-size:12px;color:var(--mut);margin-bottom:8px}
+.crumb b{color:var(--text);cursor:pointer}
 .option{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:6px 0;cursor:pointer;background:#fff}
 .option:hover{border-color:var(--acc)}
 .opt-key{flex:none;width:24px;height:24px;border-radius:50%;background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
@@ -62,6 +64,15 @@ textarea{min-height:52px;resize:vertical}
 .toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:999px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:99;max-width:90vw;text-align:center}
 .label-check{display:flex;gap:6px;align-items:center;font-size:13px;margin:4px 0;cursor:pointer}
 .picklist{max-height:150px;overflow:auto;border:1px solid var(--line);border-radius:8px;padding:6px 10px;margin-top:6px}
+.folder{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin:6px 0;background:var(--card);cursor:pointer}
+.folder:hover{border-color:var(--acc)}
+.dropbar{position:sticky;top:0;z-index:9;background:var(--card);border:1px dashed var(--acc);border-radius:10px;padding:10px 12px;margin-bottom:10px;box-shadow:0 6px 18px rgba(0,0,0,.08)}
+.dropchip{display:inline-block;border:1px solid var(--line);border-radius:8px;padding:4px 10px;margin:3px 4px 3px 0;cursor:pointer;background:var(--card);font-size:12px;user-select:none}
+.dropchip:hover{border-color:var(--acc);color:var(--acc)}
+.dropchip.over{border-color:var(--acc);background:var(--acc-soft)}
+.dragging{opacity:.45}
+.item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0}
+.item-done{opacity:.55}
 @media (prefers-color-scheme: dark){
 :root{--bg:#10141c;--card:#1a212c;--line:#2a3442;--text:#e5e9f0;--mut:#8b96a5;--acc:#6d8bff;--acc-soft:#202c4d;--ok:#2ecc71;--ok-soft:#13301f;--bad:#ff6b70;--bad-soft:#3a1a1d;--gold:#f0a63e;--gold-soft:#3a2c10}
 input,input[type=text],input[type=number],textarea,select,.option,.tag{background:#121826;color:var(--text)}
@@ -75,8 +86,16 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
 (function () {
   'use strict';
   var KEY = 'learnhub.store.v1';
+  var APP_VERSION = 'v1.0';
   var TYPE_NAMES = { single: '单选', judge: '判断', multi: '多选' };
   var MODE_LABEL = { quiz: '测验', review: '错题回顾', timer: '计时', countdown: '倒计时' };
+  var ITEM_META = {
+    material: { icon: '📂', label: '看资料' },
+    quiz: { icon: '📝', label: '做测验' },
+    review: { icon: '🔁', label: '错题回顾' },
+    timer: { icon: '⏲', label: '计时学习' },
+    task: { icon: '✅', label: '待办' }
+  };
   var TAG_CHOICES = ['太难', '太简单', '刚好合适', '题目有误', '收获很大', '想再练一次'];
 
   /* ================= 工具 ================= */
@@ -118,32 +137,35 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     return { name: '学习者', createdAt: Date.now(), points: 0, dailyGoalMin: 30, goals: [], checkIns: {}, mastery: {}, logs: [], streak: 0, streakLast: '' };
   }
 
-  /* ================= 数据模型 v2 =================
-     projects[]     学习项目（原「科目」）
-     categories[]   全局分类（资料与题目共用）
-     materials[]    资料（文件/链接/笔记），belong projectId
-     questions[]    题目，belong projectId，带 cat/tags/materialIds（关联资料）
-     users.local    mastery 以题目 id 为键；logs 记 projectId/projectName
+  /* ================= 数据模型 v4 =================
+     folders[]    文件夹树（parentId=null 即顶层「项目」）
+     materials[]  资料，folderId 归属
+     questions[]  题目，folderId 归属，materialIds 关联资料
+     lists[]      学习清单，items 引用资料/文件夹/计时/待办
+     users.local  mastery 以题目 id 为键；logs 记 folderId/folderName
   */
   function sampleStore() {
-    var p = { id: 'p_demo', name: '示例项目：公基速通', desc: '演示用，可删除后自建', createdAt: Date.now() };
+    var now = Date.now();
     return {
-      version: 2,
-      projects: [p],
-      categories: [{ id: 'cat_textbook', name: '教材讲义' }, { id: 'cat_exam', name: '真题试卷' }, { id: 'cat_video', name: '网课视频' }, { id: 'cat_note', name: '方法笔记' }],
+      version: 4,
+      folders: [
+        { id: 'f_demo', name: '示例：公基速通', parentId: null, createdAt: now },
+        { id: 'f_demo_pol', name: '政治常识', parentId: 'f_demo', createdAt: now },
+        { id: 'f_demo_law', name: '法律常识', parentId: 'f_demo', createdAt: now }
+      ],
       materials: [
-        { id: 'm_demo1', kind: 'link', title: '中国大学MOOC（慕课）', projectId: 'p_demo', cat: 'cat_video', tags: ['公开课'], note: '找专业课系统课', url: 'https://www.icourse163.org/', status: 'new', fav: true, opens: 0, lastOpenAt: 0, createdAt: Date.now() }
+        { id: 'm_demo1', kind: 'link', title: '中国大学MOOC（慕课）', folderId: 'f_demo', tags: ['公开课'], note: '找专业课系统课', url: 'https://www.icourse163.org/', status: 'new', fav: true, opens: 0, lastOpenAt: 0, createdAt: now }
       ],
       questions: [
-        { id: 'q_demo1', projectId: 'p_demo', type: 'single', stem: '我国的根本政治制度是？', options: [{ key: 'A', text: '人民代表大会制度' }, { key: 'B', text: '中国共产党领导的多党合作制度' }, { key: 'C', text: '民族区域自治制度' }, { key: 'D', text: '基层群众自治制度' }], answer: ['A'], analysis: '人民代表大会制度是我国的根本政治制度。', cat: 'cat_exam', tags: ['政治'], materialIds: [], createdAt: Date.now() },
-        { id: 'q_demo2', projectId: 'p_demo', type: 'judge', stem: '全国人民代表大会是最高国家权力机关。', options: [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }], answer: ['T'], analysis: '宪法规定全国人大是最高国家权力机关。', cat: 'cat_exam', tags: ['政治'], materialIds: [], createdAt: Date.now() },
-        { id: 'q_demo3', projectId: 'p_demo', type: 'single', stem: '我国现行宪法是哪一年颁布的？', options: [{ key: 'A', text: '1954年' }, { key: 'B', text: '1975年' }, { key: 'C', text: '1982年' }, { key: 'D', text: '1999年' }], answer: ['C'], analysis: '现行宪法是 1982 年颁布的（八二宪法）。', cat: 'cat_exam', tags: ['法律'], materialIds: [], createdAt: Date.now() },
-        { id: 'q_demo4', projectId: 'p_demo', type: 'multi', stem: '下列属于行政处罚的有？', options: [{ key: 'A', text: '警告' }, { key: 'B', text: '罚款' }, { key: 'C', text: '行政拘留' }, { key: 'D', text: '罚金' }], answer: ['A', 'B', 'C'], analysis: '罚金是刑罚（附加刑），不属于行政处罚。', cat: 'cat_exam', tags: ['法律'], materialIds: [], createdAt: Date.now() }
+        { id: 'q_demo1', folderId: 'f_demo_pol', type: 'single', stem: '我国的根本政治制度是？', options: [{ key: 'A', text: '人民代表大会制度' }, { key: 'B', text: '中国共产党领导的多党合作制度' }, { key: 'C', text: '民族区域自治制度' }, { key: 'D', text: '基层群众自治制度' }], answer: ['A'], analysis: '人民代表大会制度是我国的根本政治制度。', tags: ['政治'], materialIds: [], createdAt: now },
+        { id: 'q_demo2', folderId: 'f_demo_law', type: 'judge', stem: '全国人民代表大会是最高国家权力机关。', options: [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }], answer: ['T'], analysis: '宪法规定全国人大是最高国家权力机关。', tags: ['法律'], materialIds: [], createdAt: now },
+        { id: 'q_demo3', folderId: 'f_demo_law', type: 'multi', stem: '下列属于行政处罚的有？', options: [{ key: 'A', text: '警告' }, { key: 'B', text: '罚款' }, { key: 'C', text: '行政拘留' }, { key: 'D', text: '罚金' }], answer: ['A', 'B', 'C'], analysis: '罚金是刑罚（附加刑），不属于行政处罚。', tags: ['法律'], materialIds: [], createdAt: now }
       ],
+      lists: [],
       users: { local: emptyUser() }
     };
   }
-  function migrateV1(o) {
+  function migrateV1toV2(o) {
     var out = { version: 2, projects: [], categories: o.categories || [], materials: [], questions: [], users: o.users || { local: emptyUser() } };
     (o.subjects || []).forEach(function (s) {
       out.projects.push({ id: s.id, name: s.name, desc: s.desc || '', createdAt: Date.now() });
@@ -151,21 +173,12 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
         (c.questions || []).forEach(function (q) {
           var tags = (q.tags || []).slice();
           if (c.name && tags.indexOf(c.name) < 0) tags.push(c.name);
-          out.questions.push({
-            id: q.id, projectId: s.id, type: q.type, stem: q.stem, options: q.options, answer: q.answer,
-            analysis: q.analysis || '', cat: q.cat || '', tags: tags, materialIds: q.materialIds || [], createdAt: Date.now()
-          });
+          out.questions.push({ id: q.id, projectId: s.id, type: q.type, stem: q.stem, options: q.options, answer: q.answer, analysis: q.analysis || '', cat: q.cat || '', tags: tags, materialIds: q.materialIds || [], createdAt: Date.now() });
         });
       });
     });
     (o.materials || []).forEach(function (m) {
-      var tags = (m.tags || []).slice();
-      var subj = (o.subjects || []).filter(function (s) { return s.id === m.subjectId; })[0];
-      if (subj && m.chapterId) {
-        var chap = (subj.chapters || []).filter(function (c) { return c.id === m.chapterId; })[0];
-        if (chap && chap.name && tags.indexOf(chap.name) < 0) tags.push(chap.name);
-      }
-      var copy = {};
+      var tags = (m.tags || []).slice(), copy = {};
       for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) copy[k] = m[k];
       copy.projectId = m.projectId || m.subjectId || '';
       copy.tags = tags;
@@ -178,18 +191,64 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     });
     return out;
   }
+  function migrateV2toV4(o) {
+    var now = Date.now();
+    var out = { version: 4, folders: [], materials: [], questions: [], lists: o.lists || [], users: o.users || { local: emptyUser() } };
+    (o.projects || []).forEach(function (p) { out.folders.push({ id: p.id, name: p.name, parentId: null, createdAt: p.createdAt || now }); });
+    var catMap = {};
+    function folderFor(pid, catId) {
+      if (!catId) return pid || '';
+      var key = (pid || '') + '::' + catId;
+      if (catMap[key]) return catMap[key];
+      var c = (o.categories || []).filter(function (x) { return x.id === catId; })[0];
+      var fid = genId('f');
+      out.folders.push({ id: fid, name: c ? c.name : '未分类', parentId: pid || null, createdAt: now });
+      catMap[key] = fid;
+      return fid;
+    }
+    (o.materials || []).forEach(function (m) {
+      var copy = {};
+      for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) copy[k] = m[k];
+      copy.folderId = folderFor(m.projectId || '', m.cat || '');
+      delete copy.projectId; delete copy.cat;
+      out.materials.push(copy);
+    });
+    (o.questions || []).forEach(function (q) {
+      var copy = {};
+      for (var k in q) if (Object.prototype.hasOwnProperty.call(q, k)) copy[k] = q[k];
+      copy.folderId = folderFor(q.projectId || '', q.cat || '');
+      delete copy.projectId; delete copy.cat;
+      out.questions.push(copy);
+    });
+    (out.users.local.logs || []).forEach(function (l) {
+      if (l.folderId === undefined) l.folderId = l.projectId || '';
+      if (l.folderName === undefined) l.folderName = l.projectName || '';
+    });
+    return out;
+  }
   var migratedFlag = false;
   function normalize(o) {
     if (!o || typeof o !== 'object') return sampleStore();
-    if (o.subjects && !o.projects) { o = migrateV1(o); migratedFlag = true; }
-    if (!o.projects) o.projects = [];
-    if (!o.categories) o.categories = [];
+    if (o.subjects && !o.projects && !o.folders) { o = migrateV1toV2(o); migratedFlag = true; }
+    if (o.projects && !o.folders) { o = migrateV2toV4(o); migratedFlag = true; }
+    if (!o.folders) o.folders = [];
     if (!o.materials) o.materials = [];
     if (!o.questions) o.questions = [];
+    if (!o.lists) o.lists = [];
     if (!o.users) o.users = {};
     if (!o.users.local) o.users.local = emptyUser();
     if (!o.users.local.mastery) o.users.local.mastery = {};
     if (!o.users.local.logs) o.users.local.logs = [];
+    (o.lists || []).forEach(function (l) {
+      (l.items || []).forEach(function (it) {
+        if (it.due === undefined) it.due = '';
+        if (it.repeat === undefined) it.repeat = '';
+        if (!Array.isArray(it.days)) it.days = [];
+        if (!it.doneMap) it.doneMap = {};
+        if (!it.skipMap) it.skipMap = {};
+        if (it.postponedCount === undefined) it.postponedCount = 0;
+      });
+    });
     return o;
   }
 
@@ -204,17 +263,146 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   }
   function saveStore() {
     if (!persistOk) return;
-    try { localStorage.setItem(KEY, JSON.stringify(store)); }
+    try { store.appVersion = APP_VERSION; localStorage.setItem(KEY, JSON.stringify(store)); }
     catch (e) { persistOk = false; toast('⚠️ 浏览器本地存储不可用，数据无法保存'); }
   }
   var store = loadStore();
   var user = store.users.local;
   if (migratedFlag) { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) {} }
 
-  /* ================= 业务规则 ================= */
+  /* ================= 树与查询 ================= */
+  function folderById(id) { return store.folders.filter(function (f) { return f.id === id; })[0] || null; }
+  function childFolders(id) { return store.folders.filter(function (f) { return (f.parentId || null) === (id || null); }); }
+  function folderPath(id) {
+    var path = [], guard = 0;
+    while (id && guard++ < 50) { var f = folderById(id); if (!f) break; path.unshift(f); id = f.parentId; }
+    return path;
+  }
+  function descendants(id) {
+    var out = {}, queue = [id];
+    while (queue.length) {
+      var cur = queue.shift();
+      if (out[cur]) continue;
+      out[cur] = 1;
+      childFolders(cur).forEach(function (c) { queue.push(c.id); });
+    }
+    return Object.keys(out);
+  }
+  function subtreeMaterials(id) { var d = descendants(id); return store.materials.filter(function (m) { return d.indexOf(m.folderId || '') >= 0; }); }
+  function subtreeQuestions(id) { var d = descendants(id); return store.questions.filter(function (q) { return d.indexOf(q.folderId || '') >= 0; }); }
+  function materialById(id) { return store.materials.filter(function (m) { return m.id === id; })[0] || null; }
+  function questionById(id) { return store.questions.filter(function (q) { return q.id === id; })[0] || null; }
+  function listById(id) { return store.lists.filter(function (l) { return l.id === id; })[0] || null; }
+  function linkedQuestions(mid) { return store.questions.filter(function (q) { return (q.materialIds || []).indexOf(mid) >= 0; }); }
+  function allTags(list) {
+    var s = {}, out = [];
+    list.forEach(function (x) { (x.tags || []).forEach(function (t) { if (!s[t]) { s[t] = 1; out.push(t); } }); });
+    return out;
+  }
+  function folderStats(id) {
+    var qs = subtreeQuestions(id), ms = subtreeMaterials(id);
+    var wrong = 0, mastered = 0, attempts = 0;
+    qs.forEach(function (q) {
+      var st = masteryState(user.mastery[q.id]);
+      attempts += st.a;
+      if (st.wrong) wrong++;
+      if (st.mastered) mastered++;
+    });
+    var sec = user.logs.filter(function (l) { return (l.folderId || '') === id; }).reduce(function (a, l) { return a + (l.seconds || 0); }, 0);
+    return {
+      qCount: qs.length, mCount: ms.length, wrong: wrong, mastered: mastered, attempts: attempts, seconds: sec,
+      mDone: ms.filter(function (m) { return m.status === 'done'; }).length,
+      subs: childFolders(id).length
+    };
+  }
+  function listProgress(l) {
+    var items = l.items || [], done = items.filter(function (i) { return i.done; }).length;
+    return { done: done, total: items.length, pct: items.length ? Math.round((done / items.length) * 100) : 0 };
+  }
+  function listToday(l) {
+    var tk = todayKey();
+    var due = (l.items || []).filter(function (i) { return isDueToday(i, tk) && !isSkippedToday(i, tk); });
+    var done = due.filter(function (i) { return isDoneToday(i, tk); }).length;
+    var overdue = due.filter(function (i) { return isOverdue(i, tk); }).length;
+    return { due: due.length, done: done, overdue: overdue, pct: due.length ? Math.round((done / due.length) * 100) : 0, total: (l.items || []).length };
+  }
+  function todayTasks() {
+    var tk = todayKey(), out = [];
+    store.lists.forEach(function (l) {
+      (l.items || []).forEach(function (it) {
+        if (!isDueToday(it, tk)) return;
+        if (isSkippedToday(it, tk)) return;
+        out.push({ list: l, item: it, overdue: isOverdue(it, tk), done: isDoneToday(it, tk) });
+      });
+    });
+    out.sort(function (a, b) {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      return 0;
+    });
+    return out;
+  }
+  function itemTitle(it) {
+    if (it.kind === 'material') { var m = materialById(it.refId); return m ? m.title : '（资料已删除）'; }
+    if (it.kind === 'quiz' || it.kind === 'review') { var f = folderById(it.refId); return (it.kind === 'review' ? '错题回顾：' : '测验：') + (f ? f.name : '（文件夹已删除）'); }
+    if (it.kind === 'timer') return '专注 ' + (it.minutes || 25) + ' 分钟';
+    return it.text || '待办';
+  }
   function masteryState(m) {
     if (!m || !m.a) return { a: 0, c: 0, last: 0, streak: 0, wrong: false, mastered: false };
     return { a: m.a, c: m.c, last: m.last, streak: m.streak, wrong: m.last === 0, mastered: m.last === 1 && m.streak >= 2 && m.a >= 2 };
+  }
+  /* ---- 任务排期 ---- */
+  var WEEK_CN = ['日', '一', '二', '三', '四', '五', '六'];
+  function todayKey() { return dateKey(new Date()); }
+  function isScheduled(it) { return !!it.repeat || !!it.due; }
+  function isDueToday(it, tk) {
+    tk = tk || todayKey();
+    if (it.repeat === 'daily') return true;
+    if (it.repeat === 'weekly') return (it.days || []).indexOf(new Date().getDay()) >= 0;
+    if (it.due) return it.due <= tk;
+    return false;
+  }
+  function isDoneToday(it, tk) {
+    tk = tk || todayKey();
+    if (it.repeat) return !!(it.doneMap && it.doneMap[tk]);
+    return !!it.done;
+  }
+  function isOverdue(it, tk) {
+    tk = tk || todayKey();
+    return !it.repeat && !!it.due && it.due < tk && !it.done;
+  }
+  function isSkippedToday(it, tk) {
+    tk = tk || todayKey();
+    return !!(it.skipMap && it.skipMap[tk]);
+  }
+  function doneNote(it, tk) {
+    tk = tk || todayKey();
+    var out = [];
+    if (it.done && !it.repeat && it.doneAt) {
+      var dd = dateKey(new Date(it.doneAt));
+      if (it.due && dd < it.due) out.push('提前完成');
+      else if (it.due && dd > it.due) out.push('逾期完成');
+      else out.push('按时完成');
+    }
+    if (it.postponedCount) out.push('已推迟 ' + it.postponedCount + ' 次');
+    if (isSkippedToday(it, tk)) out.push('今日已跳过');
+    return out.join(' · ');
+  }
+  function scheduleLabel(it) {
+    if (it.repeat === 'daily') return '每天';
+    if (it.repeat === 'weekly') {
+      var ds = (it.days || []).slice().sort();
+      return ds.length ? '每周' + ds.map(function (d) { return WEEK_CN[d]; }).join('') : '每周（未选）';
+    }
+    if (it.due) {
+      var tk = todayKey();
+      if (it.due === tk) return '今天';
+      if (it.due === dateKey(addDays(new Date(), 1))) return '明天';
+      var p = it.due.split('-');
+      return p[1] + '/' + p[2];
+    }
+    return '未排期';
   }
   function applyResult(m, ok) {
     var cur = m || { a: 0, c: 0, last: 0, streak: 0 };
@@ -233,31 +421,6 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var tk = dateKey(new Date());
     if (!u.checkIns[tk]) u.checkIns[tk] = { sec: 0, checkedIn: false, sessions: 0 };
     return u.checkIns[tk];
-  }
-  function projectById(id) { return store.projects.filter(function (p) { return p.id === id; })[0] || null; }
-  function questionById(id) { return store.questions.filter(function (q) { return q.id === id; })[0] || null; }
-  function materialById(id) { return store.materials.filter(function (m) { return m.id === id; })[0] || null; }
-  function catName(id) { var c = store.categories.filter(function (x) { return x.id === id; })[0]; return c ? c.name : '未分类'; }
-  function projQuestions(pid) { return store.questions.filter(function (q) { return q.projectId === pid; }); }
-  function projMaterials(pid) { return store.materials.filter(function (m) { return m.projectId === pid; }); }
-  function linkedQuestions(mid) { return store.questions.filter(function (q) { return (q.materialIds || []).indexOf(mid) >= 0; }); }
-  function allTags(list) {
-    var s = {}, out = [];
-    list.forEach(function (x) { (x.tags || []).forEach(function (t) { if (!s[t]) { s[t] = 1; out.push(t); } }); });
-    return out;
-  }
-  function projectStats(pid) {
-    var qs = projQuestions(pid), ms = projMaterials(pid);
-    var wrong = 0, mastered = 0, attempts = 0;
-    qs.forEach(function (q) {
-      var st = masteryState(user.mastery[q.id]);
-      attempts += st.a;
-      if (st.wrong) wrong++;
-      if (st.mastered) mastered++;
-    });
-    var sec = user.logs.filter(function (l) { return (l.projectId || '') === pid; }).reduce(function (a, l) { return a + (l.seconds || 0); }, 0);
-    var mDone = ms.filter(function (m) { return m.status === 'done'; }).length;
-    return { qCount: qs.length, mCount: ms.length, wrong: wrong, mastered: mastered, attempts: attempts, seconds: sec, mDone: mDone };
   }
   function weekView() {
     var arr = [], today = new Date();
@@ -279,24 +442,24 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     });
     var totalSec = user.logs.reduce(function (a, l) { return a + (l.seconds || 0); }, 0);
     var recents = user.logs.slice().sort(function (a, b) { return b.at - a.at; }).slice(0, 8).map(function (l) {
-      return { at: l.at, project: l.projectName || '自由学习', mode: l.mode, seconds: l.seconds, correct: l.correct, total: l.total };
+      return { at: l.at, folder: l.folderName || '自由学习', mode: l.mode, seconds: l.seconds, correct: l.correct, total: l.total };
     });
     var daily = [], tbase = new Date();
     for (var i = 89; i >= 0; i--) {
       var d = addDays(tbase, -i), k = dateKey(d), e = user.checkIns[k];
       daily.push({ date: k, label: (d.getMonth() + 1) + '/' + d.getDate(), sec: e ? (e.sec || 0) : 0, sessions: e ? (e.sessions || 0) : 0 });
     }
-    var pMap = {}, hours = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    var fMap = {}, hours = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     user.logs.forEach(function (l) {
       var sec = l.seconds || 0;
       hours[new Date(l.at).getHours()] += sec;
-      var pid = l.projectId || '?';
-      if (!pMap[pid]) pMap[pid] = { id: pid, name: l.projectName || '自由学习', seconds: 0, sessions: 0 };
-      pMap[pid].seconds += sec; pMap[pid].sessions += 1;
+      var fid = l.folderId || '?';
+      if (!fMap[fid]) fMap[fid] = { id: fid, name: l.folderName || '自由学习', seconds: 0, sessions: 0 };
+      fMap[fid].seconds += sec; fMap[fid].sessions += 1;
     });
-    var proj = Object.keys(pMap).map(function (k) { return pMap[k]; }).sort(function (a, b) { return b.seconds - a.seconds; });
+    var fold = Object.keys(fMap).map(function (k) { return fMap[k]; }).sort(function (a, b) { return b.seconds - a.seconds; });
     var mats = store.materials.slice().sort(function (a, b) { return (b.opens || 0) - (a.opens || 0); }).slice(0, 10).map(function (m) {
-      return { id: m.id, title: m.title, opens: m.opens || 0, kind: m.kind };
+      return { id: m.id, title: m.title, opens: m.opens || 0 };
     });
     return {
       name: user.name, points: user.points, level: lv.level, levelInto: lv.into, levelNeed: lv.need,
@@ -304,11 +467,11 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       week: weekView(), goalMin: user.dailyGoalMin || 30, goals: user.goals || [],
       attemptTotal: attemptTotal, wrongTotal: wrongTotal, masteredTotal: masteredTotal,
       sessionTotal: user.logs.length, totalSec: totalSec, recents: recents,
-      daily: daily, proj: proj, hours: hours, mats: mats
+      daily: daily, fold: fold, hours: hours, mats: mats
     };
   }
 
-  /* ================= 资料库文件存储（IndexedDB） ================= */
+  /* ================= 文件存储 ================= */
   var DB_NAME = 'learnhub-files', DB_STORE = 'files', dbPromise = null, filesOk = true;
   function openDB() {
     if (dbPromise) return dbPromise;
@@ -385,14 +548,15 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
 
   /* ================= 界面状态 ================= */
   function newTimer() {
-    return { mode: 'stop', status: 'idle', elapsed: 0, cdMin: '25', cdSec: 1500, remain: 1500, projectId: '', note: '', tick: null };
+    return { mode: 'stop', status: 'idle', elapsed: 0, cdMin: '25', cdSec: 1500, remain: 1500, folderId: '', note: '', tick: null };
   }
   var ui = {
-    page: 'home', projectId: null, projTab: 'mat', quiz: null, timer: newTimer(),
-    lib: { q: '', cat: '', type: '', sort: 'recent', projectFilter: '', form: null, catMgr: false, expanded: null, keepFocus: null },
-    pq: { q: '', cat: '', tag: '', type: '' },      // 项目内题目筛选
-    pm: { q: '', cat: '', type: '', sort: 'recent' }, // 项目内资料筛选
-    qform: null, statsDays: 30, toast: null, toastTimer: null
+    page: 'home', folderId: null, folderTab: 'sub',
+    pf: { q: '', tag: '', type: '' }, pm: { q: '', tag: '', type: '', sort: 'recent' },
+    lib: { q: '', folderId: '', tag: '', type: '', sort: 'recent', form: null, expanded: null, keepFocus: null },
+    listId: null, listForm: null, itemForm: null, itemEdit: null, itemPostpone: null,
+    qform: null, folderMenu: null, drag: null, quiz: null, timer: newTimer(),
+    statsDays: 30, toast: null, toastTimer: null
   };
   function toast(msg) {
     ui.toast = msg;
@@ -405,7 +569,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
 
   /* ================= 动作 ================= */
   var ACT = {};
-  ACT.nav = function (p) { ui.page = p; ui.quiz = null; render(); };
+  ACT.nav = function (p) { ui.page = p; ui.quiz = null; ui.folderMenu = null; if (p !== 'folder') ui.folderId = null; render(); };
   ACT.checkin = function () {
     var tk = dateKey(new Date());
     if (user.checkIns[tk] && user.checkIns[tk].checkedIn) return;
@@ -430,7 +594,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     saveStore(); render();
   };
   ACT.resetProgress = function () {
-    if (!confirm('确定清空全部学习进度（积分/错题/时长/目标）？项目、资料与题目会保留。')) return;
+    if (!confirm('确定清空全部学习进度（积分/错题/时长/目标）？文件夹、资料、题目与清单会保留。')) return;
     user.points = 0; user.mastery = {}; user.logs = []; user.checkIns = {}; user.goals = []; user.streak = 0; user.streakLast = '';
     saveStore(); render(); toast('学习进度已清空');
   };
@@ -444,97 +608,143 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   };
   ACT.importData = function () { var f = document.getElementById('import-file'); if (f) f.click(); };
 
-  /* ---- 学习项目 ---- */
-  ACT.projAdd = function () {
-    var n = (val('proj-name') || '').trim(); if (!n) return;
-    store.projects.push({ id: genId('p'), name: n, desc: (val('proj-desc') || '').trim(), createdAt: Date.now() });
-    saveStore(); render(); toast('项目已创建');
+  /* ---- 文件夹 ---- */
+  ACT.folderAdd = function () {
+    var n = (val('folder-name') || '').trim(); if (!n) return;
+    store.folders.push({ id: genId('f'), name: n, parentId: ui.folderId || null, createdAt: Date.now() });
+    saveStore(); render(); toast('文件夹已创建');
   };
-  ACT.projOpen = function (id) { ui.projectId = id; ui.projTab = 'mat'; ui.quiz = null; render(); };
-  ACT.projBack = function () { ui.projectId = null; ui.quiz = null; render(); };
-  ACT.projTab = function (t) { ui.projTab = t; render(); };
-  ACT.projRename = function (id) {
-    var p = projectById(id); if (!p) return;
-    var n = prompt('修改项目名称', p.name); if (n === null) return;
-    p.name = n.trim() || p.name;
-    var d = prompt('修改说明（可留空）', p.desc || ''); if (d !== null) p.desc = d.trim();
-    saveStore(); render();
+  ACT.folderOpen = function (id) { ui.folderId = id; ui.folderTab = 'sub'; ui.quiz = null; ui.page = 'folder'; ui.folderMenu = null; render(); };
+  ACT.folderBack = function () {
+    var f = folderById(ui.folderId);
+    ui.folderId = f ? f.parentId : null;
+    if (!ui.folderId) ui.page = 'folders';
+    render();
   };
-  ACT.projDel = function (id) {
-    var p = projectById(id); if (!p) return;
-    if (!confirm('删除项目「' + p.name + '」？其下资料与题目会一并删除（学习记录保留）。')) return;
-    store.projects = store.projects.filter(function (x) { return x.id !== id; });
-    store.materials = store.materials.filter(function (m) { return m.projectId !== id; });
-    store.questions = store.questions.filter(function (q) { return q.projectId !== id; });
-    if (ui.projectId === id) ui.projectId = null;
-    saveStore(); render();
+  ACT.folderTab = function (t) { ui.folderTab = t; render(); };
+  ACT.folderRename = function (id) {
+    var f = folderById(id); if (!f) return;
+    var n = prompt('重命名文件夹', f.name); if (n === null) return;
+    f.name = n.trim() || f.name; saveStore(); render();
   };
-
-  /* ---- 分类（全局） ---- */
-  ACT.catMgr = function () { ui.lib.catMgr = !ui.lib.catMgr; render(); };
-  ACT.catAdd = function () {
-    var n = (val('cat-new') || '').trim(); if (!n) return;
-    store.categories.push({ id: genId('cat'), name: n });
-    saveStore(); render(); toast('分类已添加');
+  ACT.folderMenu = function (id) { ui.folderMenu = ui.folderMenu === id ? null : id; render(); };
+  /* ---- 移动：拖拽 + 点击目标（手机也能用） ---- */
+  function dragLabel(p) {
+    if (!p) return '';
+    var parts = p.split(':'), kind = parts[0], id = parts.slice(1).join(':');
+    if (kind === 'folder') { var f = folderById(id); return '📁 ' + (f ? f.name : '文件夹'); }
+    if (kind === 'material') { var m = materialById(id); return m ? libIcon(m) + ' ' + m.title : '资料'; }
+    if (kind === 'question') { var q = questionById(id); return '📝 ' + (q ? q.stem.slice(0, 20) : '题目'); }
+    return '';
+  }
+  function allFoldersFlat() {
+    var out = [];
+    function walk(pid, depth) { childFolders(pid).forEach(function (f) { out.push({ id: f.id, name: f.name, depth: depth }); walk(f.id, depth + 1); }); }
+    walk(null, 0);
+    return out;
+  }
+  function showDropBar(payload) {
+    hideDropBar();
+    var app = document.getElementById('app');
+    if (!app) return;
+    var bar = document.createElement('div');
+    bar.className = 'dropbar'; bar.id = 'dropbar';
+    bar.innerHTML = '<div class="row"><b>把「' + esc(dragLabel(payload)) + '」移动到：</b><span class="grow"></span>' +
+      btn('取消', 'dragCancel', null, null, 'btn-sm') + '</div>' +
+      '<div style="margin-top:6px">' +
+      '<span class="dropchip" data-act="dropTo" data-arg="" data-drop="">📁 根目录</span>' +
+      allFoldersFlat().map(function (f) {
+        return '<span class="dropchip" data-act="dropTo" data-arg="' + f.id + '" data-drop="' + f.id + '">' + new Array(f.depth + 1).join('· ') + '📁 ' + esc(f.name) + '</span>';
+      }).join('') + '</div>' +
+      '<div class="mut" style="margin-top:6px">拖动到目标文件夹，或直接点上面的文件夹</div>';
+    app.insertBefore(bar, app.firstChild);
+  }
+  function hideDropBar() { var b = document.getElementById('dropbar'); if (b && b.parentNode) b.parentNode.removeChild(b); }
+  ACT.dragStart = function (payload) {
+    ui.drag = payload;
+    ui.folderMenu = null;
+    showDropBar(payload);
   };
-  ACT.catRename = function (id) {
-    var c = store.categories.filter(function (x) { return x.id === id; })[0]; if (!c) return;
-    var n = prompt('修改分类名称', c.name); if (n === null) return;
-    c.name = n.trim() || c.name; saveStore(); render();
+  ACT.dragCancel = function () { ui.drag = null; hideDropBar(); render(); };
+  ACT.dropTo = function (targetId) {
+    var p = ui.drag; ui.drag = null; hideDropBar();
+    if (!p) { render(); return; }
+    var parts = p.split(':'), kind = parts[0], id = parts.slice(1).join(':');
+    var target = targetId || null;
+    if (kind === 'folder') {
+      if (target === id) { toast('不能移动到自身'); render(); return; }
+      if (target && descendants(id).indexOf(target) >= 0) { toast('不能移动到自己的子文件夹里'); render(); return; }
+      var f = folderById(id); if (!f) { render(); return; }
+      f.parentId = target;
+      saveStore(); render();
+      toast('已移动到「' + (target ? (folderById(target) || {}).name : '根目录') + '」');
+      return;
+    }
+    if (kind === 'material') {
+      var m = materialById(id); if (!m) { render(); return; }
+      m.folderId = target || '';
+      saveStore(); render(); toast('资料已移动到「' + (target ? (folderById(target) || {}).name : '未归档') + '」');
+      return;
+    }
+    if (kind === 'question') {
+      var q = questionById(id); if (!q) { render(); return; }
+      q.folderId = target || '';
+      saveStore(); render(); toast('题目已移动到「' + (target ? (folderById(target) || {}).name : '未归档') + '」');
+      return;
+    }
+    render();
   };
-  ACT.catDel = function (id) {
-    var c = store.categories.filter(function (x) { return x.id === id; })[0]; if (!c) return;
-    if (!confirm('删除分类「' + c.name + '」？其下资料与题目会变为「未分类」。')) return;
-    store.categories = store.categories.filter(function (x) { return x.id !== id; });
-    store.materials.forEach(function (m) { if (m.cat === id) m.cat = ''; });
-    store.questions.forEach(function (q) { if (q.cat === id) q.cat = ''; });
+  ACT.folderDel = function (id) {
+    var f = folderById(id); if (!f) return;
+    var d = descendants(id);
+    var nm = store.materials.filter(function (m) { return d.indexOf(m.folderId || '') >= 0; }).length;
+    var nq = store.questions.filter(function (q) { return d.indexOf(q.folderId || '') >= 0; }).length;
+    if (!confirm('删除文件夹「' + f.name + '」及其 ' + childFolders(id).length + ' 个子文件夹、' + nm + ' 份资料、' + nq + ' 道题？')) return;
+    store.folders = store.folders.filter(function (x) { return d.indexOf(x.id) < 0; });
+    store.materials = store.materials.filter(function (m) { return d.indexOf(m.folderId || '') < 0; });
+    store.questions = store.questions.filter(function (q) { return d.indexOf(q.folderId || '') < 0; });
+    if (d.indexOf(ui.folderId) >= 0) { ui.folderId = null; ui.page = 'folders'; }
     saveStore(); render();
   };
 
   /* ---- 资料 ---- */
   ACT.libForm = function (kind) {
     ui.lib.form = {
-      id: null, kind: kind || 'file', projectId: ui.projectId || (ui.lib.projectFilter || ''),
-      cat: ui.lib.cat && ui.lib.cat !== '__none__' ? ui.lib.cat : '', tags: '', title: '', url: '', text: '', note: '', questionIds: []
-    };
-    render();
-  };
-  ACT.libFromMaterial = function (id) {
-    var m = materialById(id); if (!m) return;
-    ui.projectId = m.projectId; ui.projTab = 'q';
-    ui.qform = {
-      id: null, type: 'single', stem: '', options: [{ key: 'A', text: '' }, { key: 'B', text: '' }], ansKeys: [], analysis: '',
-      cat: m.cat || '', tags: (m.tags || []).join(' '), materialIds: [m.id]
+      id: null, kind: kind || 'file', folderId: ui.folderId || (ui.lib.folderId || ''),
+      tags: '', title: '', url: '', text: '', note: '', questionIds: []
     };
     render();
   };
   ACT.libEdit = function (id) {
     var m = materialById(id); if (!m) return;
     ui.lib.form = {
-      id: m.id, kind: m.kind, title: m.title, projectId: m.projectId || '', cat: m.cat || '',
-      tags: (m.tags || []).join(' '), url: m.url || '', text: m.text || '', note: m.note || '',
-      questionIds: linkedQuestions(m.id).map(function (q) { return q.id; })
+      id: m.id, kind: m.kind, title: m.title, folderId: m.folderId || '', tags: (m.tags || []).join(' '),
+      url: m.url || '', text: m.text || '', note: m.note || '', questionIds: linkedQuestions(m.id).map(function (q) { return q.id; })
     };
+    render();
+  };
+  ACT.libFromMaterial = function (id) {
+    var m = materialById(id); if (!m) return;
+    ui.folderId = m.folderId; ui.page = 'folder'; ui.folderTab = 'q';
+    ui.qform = { id: null, type: 'single', stem: '', options: [{ key: 'A', text: '' }, { key: 'B', text: '' }], ansKeys: [], analysis: '', tags: (m.tags || []).join(' '), materialIds: [m.id] };
     render();
   };
   ACT.libCancel = function () { ui.lib.form = null; render(); };
   ACT.libToggleQ = function (qid) {
     var f = ui.lib.form; if (!f) return;
-    var has = f.questionIds.indexOf(qid) >= 0;
-    f.questionIds = has ? f.questionIds.filter(function (x) { return x !== qid; }) : f.questionIds.concat([qid]);
+    f.questionIds = f.questionIds.indexOf(qid) >= 0 ? f.questionIds.filter(function (x) { return x !== qid; }) : f.questionIds.concat([qid]);
     render();
   };
   ACT.libAdd = function () {
     var f = ui.lib.form; if (!f) return;
     var title = (val('lib-title') || '').trim();
-    var cat = val('lib-cat-sel') || '';
     var tags = (val('lib-tags') || '').split(/[,，\s]+/).filter(function (x) { return !!x; });
-    var pid = val('lib-proj-sel') || '';
+    var fid = val('lib-folder-sel') || '';
     var note = val('lib-note') || '';
     if (f.id) {
       var m = materialById(f.id); if (!m) return;
       if (title) m.title = title;
-      m.cat = cat; m.tags = tags; m.projectId = pid; m.note = note;
+      m.tags = tags; m.folderId = fid; m.note = note;
       if (m.kind === 'link') { var u = (val('lib-url') || '').trim(); if (u) m.url = /^https?:\/\//i.test(u) ? u : 'https://' + u; }
       if (m.kind === 'note') m.text = val('lib-text') || '';
       applyQuestionLinks(m.id, f.questionIds);
@@ -549,7 +759,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       files.forEach(function (file) {
         var id = genId('m');
         store.materials.push({
-          id: id, kind: 'file', title: title || file.name, projectId: pid, cat: cat, tags: tags, note: note,
+          id: id, kind: 'file', title: title || file.name, folderId: fid, tags: tags, note: note,
           fileName: file.name, mime: file.type || '', size: file.size,
           status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
         });
@@ -568,18 +778,11 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (f.kind === 'link') {
       var url = (val('lib-url') || '').trim();
       if (!url) { toast('请填写网址'); return; }
-      store.materials.push({
-        id: id2, kind: 'link', title: title || url, projectId: pid, cat: cat, tags: tags, note: note,
-        url: /^https?:\/\//i.test(url) ? url : 'https://' + url,
-        status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
-      });
+      store.materials.push({ id: id2, kind: 'link', title: title || url, folderId: fid, tags: tags, note: note, url: /^https?:\/\//i.test(url) ? url : 'https://' + url, status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now() });
     } else {
       var text = (val('lib-text') || '').trim();
       if (!text && !title) { toast('请填写笔记内容'); return; }
-      store.materials.push({
-        id: id2, kind: 'note', title: title || text.slice(0, 24), projectId: pid, cat: cat, tags: tags, note: note,
-        text: text, status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now()
-      });
+      store.materials.push({ id: id2, kind: 'note', title: title || text.slice(0, 24), folderId: fid, tags: tags, note: note, text: text, status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now() });
     }
     applyQuestionLinks(id2, f.questionIds);
     saveStore(); ui.lib.form = null; render(); toast('资料已添加');
@@ -640,8 +843,8 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   ACT.libExport = function (withFiles) {
     var includeFiles = String(withFiles) === '1';
     var out = {
-      type: 'learnhub-library', version: 2, exportedAt: Date.now(),
-      categories: store.categories.slice(),
+      type: 'learnhub-library', version: 4, exportedAt: Date.now(),
+      folders: store.folders.slice(),
       materials: store.materials.map(function (m) { var o = {}; for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k)) o[k] = m[k]; return o; })
     };
     var jobs = [];
@@ -678,13 +881,13 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       var obj;
       try { obj = JSON.parse(String(r.result)); } catch (e) { toast('❌ 文件格式不正确'); return; }
       if (!obj || obj.type !== 'learnhub-library' || !Array.isArray(obj.materials)) { toast('❌ 不是资料库备份文件'); return; }
-      var idMap = {};
-      (obj.categories || []).forEach(function (c) {
-        if (!c || !c.name) return;
-        var hit = store.categories.filter(function (x) { return x.name === c.name; })[0];
-        if (hit) { idMap[c.id] = hit.id; return; }
-        var nc = { id: genId('cat'), name: c.name };
-        store.categories.push(nc); idMap[c.id] = nc.id;
+      var fMap = {};
+      (obj.folders || []).forEach(function (fd) {
+        if (!fd || !fd.name) return;
+        var hit = store.folders.filter(function (x) { return x.name === fd.name; })[0];
+        if (hit) { fMap[fd.id] = hit.id; return; }
+        var nf = { id: genId('f'), name: fd.name, parentId: null, createdAt: Date.now() };
+        store.folders.push(nf); fMap[fd.id] = nf.id;
       });
       var added = 0, pending = 0;
       obj.materials.forEach(function (m) {
@@ -692,8 +895,8 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
         var id = genId('m'), copy = {};
         for (var k in m) if (Object.prototype.hasOwnProperty.call(m, k) && k !== 'file') copy[k] = m[k];
         copy.id = id;
-        copy.cat = idMap[m.cat] || '';
-        copy.projectId = copy.projectId || '';
+        copy.folderId = fMap[m.folderId] || m.folderId || '';
+        if (copy.folderId && !folderById(copy.folderId)) copy.folderId = '';
         copy.opens = copy.opens || 0;
         copy.lastOpenAt = copy.lastOpenAt || 0;
         copy.createdAt = copy.createdAt || Date.now();
@@ -723,16 +926,12 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
 
   /* ---- 题目 ---- */
   ACT.qAdd = function () {
-    ui.qform = { id: null, type: 'single', stem: '', options: [{ key: 'A', text: '' }, { key: 'B', text: '' }], ansKeys: [], analysis: '', cat: ui.pq.cat || '', tags: '', materialIds: [] };
+    ui.qform = { id: null, type: 'single', stem: '', options: [{ key: 'A', text: '' }, { key: 'B', text: '' }], ansKeys: [], analysis: '', tags: '', materialIds: [] };
     render();
   };
   ACT.qEdit = function (id) {
     var q = questionById(id); if (!q) return;
-    ui.qform = {
-      id: q.id, type: q.type, stem: q.stem, options: q.options.map(function (o) { return { key: o.key, text: o.text }; }),
-      ansKeys: q.answer.slice(), analysis: q.analysis || '', cat: q.cat || '', tags: (q.tags || []).join(' '),
-      materialIds: (q.materialIds || []).slice()
-    };
+    ui.qform = { id: q.id, type: q.type, stem: q.stem, options: q.options.map(function (o) { return { key: o.key, text: o.text }; }), ansKeys: q.answer.slice(), analysis: q.analysis || '', tags: (q.tags || []).join(' '), materialIds: (q.materialIds || []).slice() };
     render();
   };
   ACT.qCancel = function () { ui.qform = null; render(); };
@@ -780,11 +979,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (f.type === 'judge') options = [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }];
     if (f.type !== 'judge' && options.some(function (o) { return !o.text; })) { toast('选项内容不能为空'); return; }
     var tags = f.tags.split(/[,，\s]+/).filter(function (x) { return !!x; });
-    var q = {
-      id: f.id || genId('q'), projectId: ui.projectId, type: f.type, stem: f.stem.trim(), options: options,
-      answer: f.ansKeys.slice(), analysis: (f.analysis || '').trim(), cat: f.cat || '', tags: tags,
-      materialIds: f.materialIds.slice(), createdAt: Date.now()
-    };
+    var q = { id: f.id || genId('q'), folderId: ui.folderId || '', type: f.type, stem: f.stem.trim(), options: options, answer: f.ansKeys.slice(), analysis: (f.analysis || '').trim(), tags: tags, materialIds: f.materialIds.slice(), createdAt: Date.now() };
     if (f.id) {
       var i = -1;
       store.questions.forEach(function (x, idx) { if (x.id === f.id) i = idx; });
@@ -802,7 +997,6 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     f.stem = val('q-stem');
     f.analysis = val('q-analysis');
     f.tags = val('q-tags');
-    f.cat = val('q-cat-sel') || '';
     for (var i = 0; i < f.options.length; i++) {
       var el = document.getElementById('q-opt-' + i);
       if (el) f.options[i].text = el.value;
@@ -810,30 +1004,23 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   }
 
   /* ---- 测验 ---- */
-  function buildQuiz(pid, mode) {
-    var pool = projQuestions(pid);
-    var pq = ui.pq;
+  function buildQuiz(fid, mode) {
+    var pool = subtreeQuestions(fid);
+    var pf = ui.pf;
     if (mode === 'review') pool = pool.filter(function (q) { return masteryState(user.mastery[q.id]).wrong; });
     else {
-      if (pq.cat) pool = pool.filter(function (q) { return (q.cat || '') === pq.cat; });
-      if (pq.tag) pool = pool.filter(function (q) { return (q.tags || []).indexOf(pq.tag) >= 0; });
-      if (pq.type) pool = pool.filter(function (q) { return q.type === pq.type; });
-      if (pq.q) {
-        var s = pq.q.toLowerCase();
-        pool = pool.filter(function (q) { return (q.stem || '').toLowerCase().indexOf(s) >= 0; });
-      }
+      if (pf.tag) pool = pool.filter(function (q) { return (q.tags || []).indexOf(pf.tag) >= 0; });
+      if (pf.type) pool = pool.filter(function (q) { return q.type === pf.type; });
+      if (pf.q) { var s = pf.q.toLowerCase(); pool = pool.filter(function (q) { return (q.stem || '').toLowerCase().indexOf(s) >= 0; }); }
       pool = pool.slice().sort(function () { return Math.random() - 0.5; });
     }
     return pool;
   }
-  ACT.startQuiz = function (pid, mode) {
-    var p = projectById(pid); if (!p) return;
-    var qs = buildQuiz(pid, mode);
+  ACT.startQuiz = function (fid, mode) {
+    var f = folderById(fid); if (!f) return;
+    var qs = buildQuiz(fid, mode);
     if (!qs.length) { toast(mode === 'review' ? '没有待复习的错题' : '没有符合条件的题目'); return; }
-    ui.quiz = {
-      projectId: pid, projectName: p.name, mode: mode, qs: qs, idx: 0, chosen: [], answered: false, ok: false,
-      results: [], status: 'run', rating: 0, tags: [], startAt: Date.now()
-    };
+    ui.quiz = { folderId: fid, folderName: f.name, mode: mode, qs: qs, idx: 0, chosen: [], answered: false, ok: false, results: [], status: 'run', rating: 0, tags: [], startAt: Date.now() };
     render();
   };
   ACT.qOpt = function (key) {
@@ -866,7 +1053,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   };
   ACT.qSaveSession = function () {
     var q = ui.quiz; if (!q || q.rating === 0) return;
-    var p = projectById(q.projectId);
+    var f = folderById(q.folderId);
     var correct = 0, pts = 0;
     q.results.forEach(function (r) {
       user.mastery[r.qid] = applyResult(user.mastery[r.qid], r.ok);
@@ -878,14 +1065,160 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var e = touchToday(user);
     e.sec += seconds; e.sessions += 1;
     bumpStreak(user);
-    user.logs.push({
-      id: genId('log'), at: Date.now(), date: dateKey(new Date()), projectId: q.projectId,
-      projectName: p ? p.name : '未知项目', mode: q.mode, seconds: seconds, correct: correct,
-      total: q.results.length, rating: q.rating, tags: q.tags.slice(), comment: (val('q-comment') || '').trim()
-    });
+    user.logs.push({ id: genId('log'), at: Date.now(), date: dateKey(new Date()), folderId: q.folderId, folderName: f ? f.name : '未知文件夹', mode: q.mode, seconds: seconds, correct: correct, total: q.results.length, rating: q.rating, tags: q.tags.slice(), comment: (val('q-comment') || '').trim() });
     saveStore();
     q.status = 'saved'; q.pts = pts;
     render(); toast('已保存，+' + pts + ' 积分');
+  };
+
+  /* ---- 学习清单 ---- */
+  ACT.listAdd = function () {
+    var n = (val('list-name') || '').trim(); if (!n) return;
+    var fid = val('list-folder-sel') || '';
+    store.lists.push({ id: genId('l'), name: n, folderId: fid, createdAt: Date.now(), items: [] });
+    saveStore(); render(); toast('清单已创建');
+  };
+  ACT.listOpen = function (id) { ui.listId = id; ui.itemForm = null; render(); };
+  ACT.listBack = function () { ui.listId = null; render(); };
+  ACT.listRename = function (id) {
+    var l = listById(id); if (!l) return;
+    var n = prompt('重命名清单', l.name); if (n === null) return;
+    l.name = n.trim() || l.name; saveStore(); render();
+  };
+  ACT.listDel = function (id) {
+    var l = listById(id); if (!l) return;
+    if (!confirm('删除清单「' + l.name + '」？（不会删除里面的资料和题目）')) return;
+    store.lists = store.lists.filter(function (x) { return x.id !== id; });
+    if (ui.listId === id) ui.listId = null;
+    saveStore(); render();
+  };
+  ACT.itemForm = function (kind) { ui.itemForm = { kind: kind || 'material', refId: '', minutes: '25', text: '', due: '', repeat: '', days: [] }; ui.itemEdit = null; render(); };
+  ACT.itemFormCancel = function () { ui.itemForm = null; ui.itemEdit = null; render(); };
+  ACT.itemPlan = function (plan) {
+    var f = ui.itemEdit || ui.itemForm; if (!f) return;
+    if (plan === 'today') { f.due = todayKey(); f.repeat = ''; }
+    else if (plan === 'tomorrow') { f.due = dateKey(addDays(new Date(), 1)); f.repeat = ''; }
+    else if (plan === 'daily') { f.due = ''; f.repeat = 'daily'; f.days = []; }
+    else if (plan === 'weekly') { f.due = ''; f.repeat = 'weekly'; }
+    else { f.due = ''; f.repeat = ''; f.days = []; }
+    render();
+  };
+  ACT.itemDay = function (d) {
+    var f = ui.itemEdit || ui.itemForm; if (!f) return;
+    d = Number(d);
+    f.days = (f.days || []).indexOf(d) >= 0 ? f.days.filter(function (x) { return x !== d; }) : (f.days || []).concat([d]);
+    render();
+  };
+  ACT.itemAdd = function () {
+    var l = listById(ui.listId); if (!l) return;
+    var f = ui.itemForm; if (!f) return;
+    var it = { id: genId('it'), kind: f.kind, done: false, doneAt: 0, due: f.due || '', repeat: f.repeat || '', days: (f.days || []).slice(), doneMap: {} };
+    if (f.kind === 'material' || f.kind === 'quiz' || f.kind === 'review') {
+      it.refId = val('item-ref') || '';
+      if (!it.refId) { toast('请选择对象'); return; }
+    } else if (f.kind === 'timer') {
+      it.minutes = Math.max(1, Math.min(600, Math.round(num('item-min', 25))));
+    } else {
+      it.text = (val('item-text') || '').trim();
+      if (!it.text) { toast('请填写待办内容'); return; }
+    }
+    l.items.push(it);
+    ui.itemForm = null; saveStore(); render(); toast('已加入清单');
+  };
+  ACT.itemEdit = function (id) {
+    var l = listById(ui.listId); if (!l) return;
+    var it = (l.items || []).filter(function (i) { return i.id === id; })[0]; if (!it) return;
+    ui.itemEdit = { id: it.id, kind: it.kind, refId: it.refId || '', minutes: String(it.minutes || 25), text: it.text || '', due: it.due || '', repeat: it.repeat || '', days: (it.days || []).slice() };
+    ui.itemForm = null;
+    render();
+  };
+  ACT.itemEditSave = function () {
+    var l = listById(ui.listId); if (!l) return;
+    var f = ui.itemEdit; if (!f) return;
+    var it = (l.items || []).filter(function (i) { return i.id === f.id; })[0]; if (!it) return;
+    it.due = f.due || ''; it.repeat = f.repeat || ''; it.days = (f.days || []).slice();
+    if (it.kind === 'timer') it.minutes = Math.max(1, Math.min(600, Math.round(num('item-min', it.minutes || 25))));
+    if (it.kind === 'task') { var t = (val('item-text') || '').trim(); if (t) it.text = t; }
+    if (it.kind === 'material' || it.kind === 'quiz' || it.kind === 'review') { var r = val('item-ref'); if (r) it.refId = r; }
+    ui.itemEdit = null; saveStore(); render(); toast('已更新计划');
+  };
+  ACT.itemToggle = function (id) {
+    var l = store.lists.filter(function (x) { return (x.items || []).some(function (i) { return i.id === id; }); })[0];
+    if (!l) return;
+    var tk = todayKey();
+    (l.items || []).forEach(function (i) {
+      if (i.id !== id) return;
+      if (i.repeat) {
+        i.doneMap = i.doneMap || {};
+        if (i.doneMap[tk]) delete i.doneMap[tk];
+        else { i.doneMap[tk] = true; i.doneAt = Date.now(); }
+      } else {
+        i.done = !i.done;
+        i.doneAt = i.done ? Date.now() : 0;
+      }
+    });
+    saveStore(); render();
+  };
+  function findItemById(id) {
+    var found = null;
+    store.lists.forEach(function (l) { (l.items || []).forEach(function (i) { if (i.id === id) found = i; }); });
+    return found;
+  }
+  ACT.itemPostponePanel = function (id) { ui.itemPostpone = ui.itemPostpone === id ? null : id; render(); };
+  ACT.itemPostponeCancel = function () { ui.itemPostpone = null; render(); };
+  ACT.itemPostpone = function (arg) {
+    var parts = String(arg).split('|'), id = parts[0], days = Number(parts[1]);
+    var it = findItemById(id); if (!it) return;
+    var base = (it.due && it.due > todayKey()) ? new Date(it.due + 'T00:00:00') : new Date();
+    it.due = dateKey(addDays(base, days));
+    it.repeat = '';
+    it.postponedCount = (it.postponedCount || 0) + 1;
+    ui.itemPostpone = null; saveStore(); render(); toast('已推迟到 ' + scheduleLabel(it));
+  };
+  ACT.itemPostponeDate = function (id) {
+    var it = findItemById(id); if (!it) return;
+    var v = val('postpone-date'); if (!v) { toast('请选择日期'); return; }
+    it.due = v; it.repeat = '';
+    it.postponedCount = (it.postponedCount || 0) + 1;
+    ui.itemPostpone = null; saveStore(); render(); toast('已改期到 ' + scheduleLabel(it));
+  };
+  ACT.itemSkipToday = function (id) {
+    var it = findItemById(id); if (!it) return;
+    it.skipMap = it.skipMap || {};
+    it.skipMap[todayKey()] = true;
+    ui.itemPostpone = null; saveStore(); render(); toast('今天先跳过，明天照常');
+  };
+  ACT.itemDel = function (id) {
+    var l = listById(ui.listId); if (!l) return;
+    l.items = l.items.filter(function (i) { return i.id !== id; });
+    saveStore(); render();
+  };
+  ACT.itemMove = function (arg) {
+    var parts = String(arg).split('|'), id = parts[0], dir = parts[1];
+    var l = listById(ui.listId); if (!l) return;
+    var i = -1;
+    l.items.forEach(function (x, idx) { if (x.id === id) i = idx; });
+    var j = dir === 'up' ? i - 1 : i + 1;
+    if (i < 0 || j < 0 || j >= l.items.length) return;
+    var tmp = l.items[i]; l.items[i] = l.items[j]; l.items[j] = tmp;
+    saveStore(); render();
+  };
+  ACT.itemStart = function (id) {
+    var l = store.lists.filter(function (x) { return (x.items || []).some(function (i) { return i.id === id; }); })[0];
+    if (!l) return;
+    var it = l.items.filter(function (i) { return i.id === id; })[0]; if (!it) return;
+    if (it.kind === 'material') { ACT.libOpen(it.refId); return; }
+    if (it.kind === 'quiz' || it.kind === 'review') { ui.listId = l.id; ACT.startQuiz(it.refId, it.kind === 'review' ? 'review' : 'quiz'); return; }
+    if (it.kind === 'timer') {
+      ui.timer = newTimer();
+      ui.timer.mode = 'cd'; ui.timer.cdMin = String(it.minutes || 25);
+      ui.timer.cdSec = (it.minutes || 25) * 60; ui.timer.remain = ui.timer.cdSec;
+      ui.timer.folderId = l.folderId || '';
+      ui.page = 'timer'; ui.quiz = null;
+      render(); toast('已载入 ' + (it.minutes || 25) + ' 分钟倒计时，点开始');
+      return;
+    }
+    ACT.itemToggle(id);
   };
 
   /* ---- 计时 ---- */
@@ -925,21 +1258,16 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var sec = t.mode === 'stop' ? t.elapsed : Math.max(0, t.cdSec - t.remain);
     stopTick();
     if (sec < 1) { t.status = 'idle'; toast('时长不足，未记录'); render(); return; }
-    var p = t.projectId ? projectById(t.projectId) : null;
+    var f = t.folderId ? folderById(t.folderId) : null;
     var e = touchToday(user);
     e.sec += sec; e.sessions += 1;
     bumpStreak(user);
-    user.logs.push({
-      id: genId('log'), at: Date.now(), date: dateKey(new Date()),
-      projectId: p ? p.id : '', projectName: p ? p.name : '自由学习',
-      mode: t.mode === 'cd' ? 'countdown' : 'timer', seconds: sec, correct: 0, total: 0,
-      rating: 0, tags: [], comment: (t.note || '').trim()
-    });
+    user.logs.push({ id: genId('log'), at: Date.now(), date: dateKey(new Date()), folderId: f ? f.id : '', folderName: f ? f.name : '自由学习', mode: t.mode === 'cd' ? 'countdown' : 'timer', seconds: sec, correct: 0, total: 0, rating: 0, tags: [], comment: (t.note || '').trim() });
     saveStore();
     var label = fmtLong(sec);
     ui.timer = newTimer();
     render();
-    toast('✅ 已计入学习时长 ' + label + (p ? '' : '（自由学习）'));
+    toast('✅ 已计入学习时长 ' + label + (f ? '' : '（自由学习）'));
   };
   function startTick() {
     stopTick();
@@ -957,9 +1285,6 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   }
   function stopTick() { if (ui.timer.tick) { clearInterval(ui.timer.tick); ui.timer.tick = null; } }
   ACT.statsDays = function (n) { ui.statsDays = n; render(); };
-  ACT.pqFilter = function (k, v) { ui.pq[k] = v; render(); };
-  ACT.pmFilter = function (k, v) { ui.pm[k] = v; render(); };
-  ACT.libFilter = function (k, v) { ui.lib[k] = v; render(); };
 
   function onImportFile(input) {
     var f = input.files && input.files[0]; if (!f) return;
@@ -985,59 +1310,80 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     return '<select id="' + id + '"' + (style ? ' style="' + style + '"' : '') + '>' +
       options.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (String(cur) === String(o[0]) ? ' selected' : '') + '>' + esc(o[1]) + '</option>'; }).join('') + '</select>';
   }
-  function catOptions(withAll, allLabel) {
-    var o = withAll ? [['', allLabel || '全部分类']] : [['', '未分类']];
-    store.categories.forEach(function (c) { o.push([c.id, c.name]); });
+  function folderOptions(includeEmpty, emptyLabel) {
+    var o = includeEmpty ? [['', emptyLabel || '（根目录）']] : [];
+    function walk(pid, depth) {
+      childFolders(pid).forEach(function (f) {
+        o.push([f.id, new Array(depth + 1).join('　') + (depth ? '└ ' : '📁 ') + f.name]);
+        walk(f.id, depth + 1);
+      });
+    }
+    walk(null, 0);
     return o;
   }
   function header(v) {
-    var items = [['home', '🏠 首页'], ['projects', '📁 学习项目'], ['lib', '📂 资料库'], ['timer', '⏲ 计时学习'], ['stats', '⏱ 时间统计']];
+    var items = [['home', '🏠 首页'], ['folders', '📁 文件夹'], ['lib', '📂 资料库'], ['lists', '✅ 学习清单'], ['timer', '⏲ 计时'], ['stats', '⏱ 统计']];
     return '<div class="nav">' + items.map(function (it) {
-      return '<button class="nav-item' + (ui.page === it[0] ? ' nav-item-on' : '') + '" data-act="nav" data-arg="' + it[0] + '">' + it[1] + '</button>';
+      return '<button class="nav-item' + (ui.page === it[0] || (it[0] === 'folders' && ui.page === 'folder') || (it[0] === 'lists' && ui.page === 'list') ? ' nav-item-on' : '') + '" data-act="nav" data-arg="' + it[0] + '">' + it[1] + '</button>';
     }).join('') + '<span class="grow"></span>' +
       chip('⚡' + v.points + ' 积分', 'gold') + chip('Lv.' + v.level) + chip('🔥 连胜 ' + v.streak + ' 天', 'ok') +
       chip('📈 掌握 ' + v.masteredTotal + ' / 错题 ' + v.wrongTotal) + '</div>';
   }
-  function materialCard(m, opts) {
-    var p = m.projectId ? projectById(m.projectId) : null;
+  function crumbs(id) {
+    var path = folderPath(id);
+    if (!path.length) return '';
+    return '<div class="crumb">' + path.map(function (f, i) {
+      return (i ? ' / ' : '') + '<b data-act="folderOpen" data-arg="' + f.id + '">' + esc(f.name) + '</b>';
+    }).join('') + '</div>';
+  }
+  function materialCard(m) {
+    var f = m.folderId ? folderById(m.folderId) : null;
     var lq = linkedQuestions(m.id);
-    var meta = [catName(m.cat)];
+    var meta = [];
+    if (f) meta.push('📁 ' + f.name);
     if (m.kind === 'file') meta.push(fmtSize(m.size));
-    if (p) meta.push(p.name);
     if (lq.length) meta.push('关联 ' + lq.length + ' 题');
     if (m.opens) meta.push('打开 ' + m.opens + ' 次');
     if (m.lastOpenAt) meta.push('最近 ' + fmtDate(m.lastOpenAt) + ' ' + fmtClock(m.lastOpenAt));
-    var html = '<div class="card"><div class="row">' +
+    var html = '<div class="card" draggable="true" data-drag="material:' + m.id + '"><div class="row">' +
       '<span style="font-size:22px">' + libIcon(m) + '</span>' +
       '<span class="grow"><div style="font-weight:700">' + (m.fav ? '⭐ ' : '') + esc(m.title) + '</div>' +
-      '<div class="mut">' + esc(meta.join(' · ')) + '</div>' +
+      (meta.length ? '<div class="mut">' + esc(meta.join(' · ')) + '</div>' : '') +
       ((m.tags && m.tags.length) ? '<div style="margin-top:2px">' + m.tags.map(function (t) { return chip('#' + t); }).join(' ') + '</div>' : '') +
       (m.note ? '<div class="mut" style="margin-top:2px">备注：' + esc(m.note) + '</div>' : '') +
-      '</span>' +
-      chip(statusLabel(m.status), m.status === 'done' ? 'ok' : m.status === 'doing' ? 'gold' : '') +
+      '</span>' + chip(statusLabel(m.status), m.status === 'done' ? 'ok' : m.status === 'doing' ? 'gold' : '') +
       btn('打开', 'libOpen', m.id, 'p', 'btn-sm') +
       (m.kind === 'file' ? btn('下载', 'libDownload', m.id, null, 'btn-sm') : '') +
       btn('状态', 'libStatus', m.id, null, 'btn-sm') +
       btn(m.fav ? '★' : '☆', 'libFav', m.id, null, 'btn-sm') +
-      btn('就这份资料出题', 'libFromMaterial', m.id, null, 'btn-sm') +
+      btn('出题', 'libFromMaterial', m.id, null, 'btn-sm') +
+      btn('移动', 'dragStart', 'material:' + m.id, null, 'btn-sm') +
       btn('编辑', 'libEdit', m.id, null, 'btn-sm') +
-      btn('删除', 'libDel', m.id, 'bad', 'btn-sm') +
-      '</div>';
-    if (lq.length) {
-      html += '<div class="mut" style="margin-top:6px">关联题目：' + lq.map(function (q) { return esc(q.stem.slice(0, 18)); }).join('、') + '</div>';
-    }
+      btn('删除', 'libDel', m.id, 'bad', 'btn-sm') + '</div>';
+    if (lq.length) html += '<div class="mut" style="margin-top:6px">关联题目：' + lq.map(function (q) { return esc(q.stem.slice(0, 18)); }).join('、') + '</div>';
     if (m.kind === 'note' && ui.lib.expanded === m.id) html += '<div class="note" style="white-space:pre-wrap;margin-top:8px">' + esc(m.text || '') + '</div>';
     if (m.kind === 'link') html += '<div class="mut" style="margin-top:6px;word-break:break-all">' + esc(m.url) + '</div>';
     return html + '</div>';
   }
+  function questionCard(q) {
+    var st = masteryState(user.mastery[q.id]);
+    var badge = st.mastered ? chip('已掌握', 'ok') : st.wrong ? chip('错题', 'bad') : st.a > 0 ? chip('练过 ' + st.a + ' 次') : chip('新题');
+    var mats = (q.materialIds || []).map(function (mid) { var m = materialById(mid); return m ? m.title : null; }).filter(Boolean);
+    return '<div class="card" draggable="true" data-drag="question:' + q.id + '"><div class="card-title"><span>' + (TYPE_NAMES[q.type] || q.type) + ' · ' + (st.a > 0 ? '对 ' + st.c + '/' + st.a : '未作答') + '</span><span class="row">' + badge + btn('移动', 'dragStart', 'question:' + q.id, null, 'btn-sm') + btn('编辑', 'qEdit', q.id, null, 'btn-sm') + btn('删除', 'qDel', q.id, 'bad', 'btn-sm') + '</span></div>' +
+      '<div style="font-weight:600">' + esc(q.stem) + '</div>' +
+      '<div class="mut" style="margin-top:6px">' + q.options.map(function (o) { return (q.answer.indexOf(o.key) >= 0 ? '✅ ' : '') + esc(o.key) + '. ' + esc(o.text); }).join('　') + '</div>' +
+      (q.analysis ? '<div class="mut" style="margin-top:4px">解析：' + esc(q.analysis) + '</div>' : '') +
+      '<div class="row" style="margin-top:6px">' + (q.tags || []).map(function (t) { return chip('#' + t); }).join(' ') + (mats.length ? chip('📂 ' + mats.join('、')) : '') + '</div></div>';
+  }
+
   function pageHome(v) {
     var todayMin = Math.round(v.todaySec / 60);
     var goalPct = Math.min(100, Math.round((todayMin / v.goalMin) * 100));
     var maxSec = Math.max.apply(null, v.week.map(function (w) { return w.sec; }).concat([1]));
     var weak = [];
-    store.projects.forEach(function (p) {
-      var st = projectStats(p.id);
-      if (st.wrong > 0) weak.push({ p: p, w: st.wrong });
+    childFolders(null).forEach(function (p) {
+      var st = folderStats(p.id);
+      if (st.wrong > 0) weak.push({ f: p, w: st.wrong });
     });
     weak.sort(function (a, b) { return b.w - a.w; });
     var tagStat = {};
@@ -1054,6 +1400,30 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       '<div class="note">距下一级还差 ' + (v.levelNeed - v.levelInto) + ' 分 · 掌握 ' + v.masteredTotal + ' 题 · 待复习错题 ' + v.wrongTotal + ' 题 · 累计作答 ' + v.attemptTotal + ' 题 · ' + v.sessionTotal + ' 次学习</div>' +
       '<div class="bar"><div class="bar-in' + (goalPct >= 100 ? ' bar-in-ok' : '') + '" style="width:' + Math.max(goalPct, 2) + '%"></div></div>' +
       '<div class="mut" style="margin-top:4px">今日目标进度 ' + goalPct + '%</div></div>';
+    /* 今日任务（跨清单汇总） */
+    var tasks = todayTasks();
+    var tk2 = todayKey();
+    var doneN = tasks.filter(function (t) { return t.done; }).length;
+    var odN = tasks.filter(function (t) { return t.overdue && !t.done; }).length;
+    html += '<div class="card"><div class="card-title"><span>✅ 今日任务</span><span class="row">' +
+      (tasks.length ? chip(doneN + ' / ' + tasks.length, doneN === tasks.length ? 'ok' : 'gold') : '') +
+      (odN ? chip(odN + ' 项逾期', 'bad') : '') +
+      btn('管理清单', 'nav', 'lists', null, 'btn-sm') + '</span></div>' +
+      (tasks.length === 0 ? '<div class="empty">' + (store.lists.length === 0 ? '还没有清单。去「✅ 学习清单」把「看资料 → 做题 → 计时」排成流程，并给任务设置计划日期。' : '今天没有安排任务。') + '</div>' :
+        tasks.map(function (t) {
+          var it = t.item;
+          return '<div class="item' + (t.done ? ' item-done' : '') + '">' +
+            '<label class="label-check"><input type="checkbox" data-act="itemToggle" data-arg="' + it.id + '"' + (t.done ? ' checked' : '') + '></label>' +
+            '<span style="font-size:18px">' + ITEM_META[it.kind].icon + '</span>' +
+            '<span class="grow"><div style="font-weight:600' + (t.done ? ';text-decoration:line-through' : '') + '">' + esc(itemTitle(it)) + '</div>' +
+            '<div class="mut">' + esc(t.list.name) + ' · 📅 ' + esc(scheduleLabel(it)) + '</div></span>' +
+            (t.overdue && !t.done ? chip('逾期', 'bad') : '') +
+            btn('开始', 'itemStart', it.id, 'p', 'btn-sm') + '</div>';
+        }).join('')) +
+      (store.lists.length ? '<div class="row" style="margin-top:10px">' + store.lists.map(function (l) {
+        var td = listToday(l);
+        return '<span class="dropchip" data-act="listOpen" data-arg="' + l.id + '">' + esc(l.name) + ' · 今日 ' + td.done + '/' + td.due + '</span>';
+      }).join('') + '</div>' : '') + '</div>';
     html += '<div class="row"><div style="flex:1.2;min-width:270px">';
     html += '<div class="card"><div class="card-title"><span>近 7 日学习时长</span><span class="row"><input id="goal-min" type="number" min="5" max="600" value="' + v.goalMin + '" style="width:88px" title="每日目标（分钟）">' + btn('保存目标', 'setGoalMin', null, 'p', 'btn-sm') + '</span></div>' +
       '<div class="week">' + v.week.map(function (w) {
@@ -1068,63 +1438,77 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
         }).join('')) + '</div>';
     html += '</div><div style="flex:1;min-width:250px">';
     html += '<div class="card"><div class="card-title"><span>🎯 薄弱项目</span></div>' +
-      (weak.length === 0 ? '<div class="empty">' + (store.projects.length === 0 ? '先去「学习项目」创建项目' : '太棒了，当前没有错题！') + '</div>' :
+      (weak.length === 0 ? '<div class="empty">' + (store.folders.length === 0 ? '先去「📁 文件夹」创建学习项目' : '太棒了，当前没有错题！') + '</div>' :
         weak.slice(0, 5).map(function (it, i) {
-          return '<div class="row" style="margin-top:6px">' + chip(String(i + 1), 'bad') + '<span class="grow" style="font-size:13px">' + esc(it.p.name) + '</span>' + chip(it.w + ' 错', 'bad') + btn('去复习', 'projOpen', it.p.id, 'bad', 'btn-sm') + '</div>';
+          return '<div class="row" style="margin-top:6px">' + chip(String(i + 1), 'bad') + '<span class="grow" style="font-size:13px">' + esc(it.f.name) + '</span>' + chip(it.w + ' 错', 'bad') + btn('进入', 'folderOpen', it.f.id, 'bad', 'btn-sm') + '</div>';
         }).join('')) +
       (weakTags.length ? '<div class="mut" style="margin-top:8px">薄弱标签：' + weakTags.map(function (t) { return chip('#' + t.t + ' ' + t.n, 'bad'); }).join(' ') + '</div>' : '') + '</div>';
     html += '<div class="card"><div class="card-title"><span>最近学习</span><span class="mut">' + v.sessionTotal + ' 次</span></div>' +
       (v.recents.length === 0 ? '<div class="empty">还没有学习记录</div>' :
         v.recents.map(function (l) {
-          return '<div class="row" style="margin-top:6px"><span class="mut">' + fmtDate(l.at) + '</span><span class="grow" style="font-size:13px">' + esc(l.project) + '</span>' + chip(MODE_LABEL[l.mode] || l.mode, l.mode === 'review' ? 'gold' : 'ok') + '<span class="mut">' + fmtLong(l.seconds) + '</span></div>';
+          return '<div class="row" style="margin-top:6px"><span class="mut">' + fmtDate(l.at) + '</span><span class="grow" style="font-size:13px">' + esc(l.folder) + '</span>' + chip(MODE_LABEL[l.mode] || l.mode, l.mode === 'review' ? 'gold' : 'ok') + '<span class="mut">' + fmtLong(l.seconds) + '</span></div>';
         }).join('')) + '</div>';
-    html += '<div class="card"><div class="card-title"><span>📂 资料库</span><span class="mut">' + store.materials.length + ' 份</span></div>' +
-      (store.materials.length === 0 ? '<div class="empty">还没有资料</div>' :
-        '<div class="row">' + chip('文件 ' + store.materials.filter(function (m) { return m.kind === 'file'; }).length) + chip('链接 ' + store.materials.filter(function (m) { return m.kind === 'link'; }).length) + chip('笔记 ' + store.materials.filter(function (m) { return m.kind === 'note'; }).length) + chip('已掌握 ' + store.materials.filter(function (m) { return m.status === 'done'; }).length, 'ok') + '</div>' +
-        store.materials.slice().sort(function (a, b) { return (b.lastOpenAt || 0) - (a.lastOpenAt || 0); }).slice(0, 3).map(function (m) {
-          return '<div class="row" style="margin-top:6px">' + libIcon(m) + '<span class="grow" style="font-size:13px">' + esc(m.title) + '</span>' + btn('打开', 'libOpen', m.id, 'p', 'btn-sm') + '</div>';
-        }).join('')) +
-      '<div class="row" style="margin-top:8px">' + btn('进入资料库', 'nav', 'lib', null, 'btn-sm') + '</div></div>';
     html += '<div class="card"><div class="row"><span class="grow" style="font-size:13px">数据备份</span>' + btn('导出备份', 'exportData', null, null, 'btn-sm') + btn('导入数据', 'importData', null, null, 'btn-sm') + btn('重置进度', 'resetProgress', null, 'bad', 'btn-sm') + '</div>' +
       (persistOk ? '' : '<div class="mut" style="margin-top:6px;color:var(--bad)">⚠️ 当前浏览器不支持本地存储，请用「导出备份」保存数据。</div>') + '</div>';
     return html + '</div></div>';
   }
-  function pageProjects() {
-    var html = '<div class="card"><div class="card-title"><span>新建学习项目</span></div>' +
-      '<input id="proj-name" type="text" placeholder="项目名称，如：2026 考研数学 / 公基速通">' +
-      '<input id="proj-desc" type="text" placeholder="说明（可选）" style="margin-top:6px">' +
-      '<div class="row" style="margin-top:8px">' + btn('创建项目', 'projAdd', null, 'ok') + '</div></div>';
-    if (store.projects.length === 0) return html + '<div class="card"><div class="empty">还没有学习项目。一个项目 = 一个学习主题，资料和题目都放在里面。</div></div>';
-    return html + store.projects.map(function (p) {
-      var st = projectStats(p.id);
-      var rate = st.attempts ? Math.round((st.mastered / Math.max(st.qCount, 1)) * 100) : 0;
-      return '<div class="card"><div class="row"><span class="grow"><div style="font-weight:700;font-size:15px">' + esc(p.name) + '</div>' +
-        '<div class="mut">' + esc(p.desc || '未填写说明') + '</div></span>' +
-        chip('题目 ' + st.qCount) + chip('资料 ' + st.mCount) + chip(st.wrong > 0 ? st.wrong + ' 错题' : '无错题', st.wrong > 0 ? 'bad' : 'ok') + chip('掌握率 ' + rate + '%', 'gold') + chip('时长 ' + fmtLong(st.seconds)) +
-        btn('进入', 'projOpen', p.id, 'p') + btn('重命名', 'projRename', p.id, null, 'btn-sm') + btn('删除', 'projDel', p.id, 'bad', 'btn-sm') + '</div></div>';
+  function pageFolders() {
+    var html = '<div class="card"><div class="card-title"><span>新建学习项目（顶层文件夹）</span></div>' +
+      '<input id="folder-name" type="text" placeholder="如：2026 考研数学 / 公基速通">' +
+      '<div class="row" style="margin-top:8px">' + btn('创建', 'folderAdd', null, 'ok') + '</div></div>';
+    var roots = childFolders(null);
+    if (roots.length === 0) return html + '<div class="card"><div class="empty">还没有文件夹。顶层文件夹就是「学习项目」。</div></div>';
+    return html + roots.map(function (f) {
+      var st = folderStats(f.id);
+      var rate = st.qCount ? Math.round((st.mastered / st.qCount) * 100) : 0;
+      return '<div class="folder" data-act="folderOpen" data-arg="' + f.id + '" draggable="true" data-drag="folder:' + f.id + '" data-drop="' + f.id + '"><span style="font-size:20px">📁</span><span class="grow"><div style="font-weight:700">' + esc(f.name) + '</div>' +
+        '<div class="mut">' + st.subs + ' 个子文件夹 · ' + st.mCount + ' 份资料 · ' + st.qCount + ' 道题' + (st.wrong ? ' · ' + st.wrong + ' 错题' : '') + '</div></span>' +
+        chip('掌握率 ' + rate + '%', 'gold') + chip('时长 ' + fmtLong(st.seconds)) +
+        btn('⋯', 'folderMenu', f.id, null, 'btn-sm') + '</div>' +
+        (ui.folderMenu === f.id ? '<div class="row" style="margin:-4px 0 8px 12px">' +
+          btn('重命名', 'folderRename', f.id, null, 'btn-sm') +
+          btn('移动到…', 'dragStart', 'folder:' + f.id, null, 'btn-sm') +
+          btn('删除', 'folderDel', f.id, 'bad', 'btn-sm') + '</div>' : '');
     }).join('');
   }
-  function pageProject() {
-    var p = projectById(ui.projectId);
-    if (!p) { ui.projectId = null; return pageProjects(); }
-    var st = projectStats(p.id);
-    var tabs = [['mat', '📂 资料 (' + st.mCount + ')'], ['q', '📝 题目 (' + st.qCount + ')'], ['ov', '📈 概览']];
-    var html = '<div class="row" style="margin-bottom:10px">' + btn('← 返回项目列表', 'projBack') +
-      '<span style="font-weight:800;font-size:16px">' + esc(p.name) + '</span>' +
-      btn('📝 全部题目测验', 'startQuiz', p.id + '|quiz', 'p', null, st.qCount === 0 ? ' disabled' : '') +
-      btn('🔁 错题回顾', 'startQuiz', p.id + '|review', 'bad', null, st.wrong === 0 ? ' disabled' : '') +
+  function pageFolder() {
+    var f = folderById(ui.folderId);
+    if (!f) { ui.page = 'folders'; ui.folderId = null; return pageFolders(); }
+    var st = folderStats(f.id);
+    var html = crumbs(f.id) + '<div class="row" style="margin-bottom:10px">' + btn('← 上一级', 'folderBack') +
+      '<span style="font-weight:800;font-size:16px">' + esc(f.name) + '</span>' +
+      btn('📝 本文件夹测验', 'startQuiz', f.id + '|quiz', 'p', null, st.qCount === 0 ? ' disabled' : '') +
+      btn('🔁 错题回顾', 'startQuiz', f.id + '|review', 'bad', null, st.wrong === 0 ? ' disabled' : '') +
+      btn('＋ 加入清单', 'listAddItemHere', f.id, null, 'btn-sm') +
       '</div>';
+    var tabs = [['sub', '📁 子文件夹 (' + st.subs + ')'], ['mat', '📂 资料 (' + st.mCount + ')'], ['q', '📝 题目 (' + st.qCount + ')'], ['ov', '📈 概览']];
     html += '<div class="row" style="margin-bottom:10px">' + tabs.map(function (t) {
-      return '<button class="tab' + (ui.projTab === t[0] ? ' tab-on' : '') + '" data-act="projTab" data-arg="' + t[0] + '">' + t[1] + '</button>';
+      return '<button class="tab' + (ui.folderTab === t[0] ? ' tab-on' : '') + '" data-act="folderTab" data-arg="' + t[0] + '">' + t[1] + '</button>';
     }).join('') + '</div>';
-    if (ui.projTab === 'ov') return html + projectOverview(p, st);
-    if (ui.projTab === 'q') return html + projectQuestions(p);
-    return html + projectMaterials(p);
+    if (ui.folderTab === 'ov') return html + folderOverview(f, st);
+    if (ui.folderTab === 'q') return html + folderQuestions(f);
+    if (ui.folderTab === 'mat') return html + folderMaterials(f);
+    /* 子文件夹 */
+    var kids = childFolders(f.id);
+    html += '<div class="card"><div class="row"><input id="folder-name" type="text" placeholder="新建子文件夹，如：第一章 极限" style="flex:1;min-width:200px">' + btn('＋ 新建子文件夹', 'folderAdd', null, 'ok', 'btn-sm') + '</div></div>';
+    if (kids.length === 0) return html + '<div class="card"><div class="empty">还没有子文件夹。可以直接在下面放资料和题目，也可以再分一层。</div></div>';
+    return html + kids.map(function (k) {
+      var ks = folderStats(k.id);
+      return '<div class="folder" data-act="folderOpen" data-arg="' + k.id + '" draggable="true" data-drag="folder:' + k.id + '" data-drop="' + k.id + '"><span style="font-size:20px">📁</span><span class="grow"><div style="font-weight:700">' + esc(k.name) + '</div>' +
+        '<div class="mut">' + ks.subs + ' 个子文件夹 · ' + ks.mCount + ' 资料 · ' + ks.qCount + ' 题' + (ks.wrong ? ' · ' + ks.wrong + ' 错题' : '') + '</div></span>' +
+        btn('⋯', 'folderMenu', k.id, null, 'btn-sm') + '</div>' +
+        (ui.folderMenu === k.id ? '<div class="row" style="margin:-4px 0 8px 12px">' +
+          btn('重命名', 'folderRename', k.id, null, 'btn-sm') +
+          btn('移动到…', 'dragStart', 'folder:' + k.id, null, 'btn-sm') +
+          btn('删除', 'folderDel', k.id, 'bad', 'btn-sm') + '</div>' : '');
+    }).join('');
   }
-  function projectMaterials(p) {
+  function folderMaterials(f) {
     var L = ui.pm;
-    var list = projMaterials(p.id).filter(function (m) {
-      if (L.cat === '__none__') { if (m.cat) return false; } else if (L.cat && (m.cat || '') !== L.cat) return false;
+    var all = store.materials.filter(function (m) { return (m.folderId || '') === f.id; });
+    var tags = allTags(all);
+    var list = all.filter(function (m) {
+      if (L.tag && (m.tags || []).indexOf(L.tag) < 0) return false;
       if (L.type && m.kind !== L.type) return false;
       if (L.q) {
         var hay = ((m.title || '') + ' ' + (m.tags || []).join(' ') + ' ' + (m.note || '') + ' ' + (m.fileName || '') + ' ' + (m.url || '')).toLowerCase();
@@ -1138,66 +1522,51 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       if (L.sort === 'added') return (b.createdAt || 0) - (a.createdAt || 0);
       return (b.lastOpenAt || b.createdAt || 0) - (a.lastOpenAt || a.createdAt || 0);
     });
-    var html = '<div class="card"><div class="row"><input id="pm-q" type="text" placeholder="搜索资料" value="' + esc(L.q) + '" style="flex:1;min-width:160px">' +
-      sel('pm-cat', catOptions(true).concat([['__none__', '未分类']]), L.cat, 'max-width:160px') +
-      sel('pm-type', [['', '全部类型'], ['file', '文件'], ['link', '链接'], ['note', '笔记']], L.type, 'max-width:130px') +
-      sel('pm-sort', [['recent', '最近打开'], ['added', '最近添加'], ['opens', '使用最多'], ['name', '按名称']], L.sort, 'max-width:150px') +
-      '</div><div class="row" style="margin-top:8px">' +
-      btn('＋ 上传文件', 'libForm', 'file', 'p', 'btn-sm') + btn('＋ 添加链接', 'libForm', 'link', null, 'btn-sm') + btn('＋ 写笔记', 'libForm', 'note', null, 'btn-sm') +
-      '<span class="grow"></span><span class="mut">共 ' + projMaterials(p.id).length + ' 份</span></div></div>';
-    if (ui.lib.form) html += formLib(ui.lib.form, p);
-    if (list.length === 0) return html + '<div class="card"><div class="empty">这个项目还没有资料。上传 PDF / PPT / 图片，或收藏网址、写笔记。</div></div>';
+    var html = '<div class="card"><div class="row"><input id="pm-q" type="text" placeholder="搜索资料" value="' + esc(L.q) + '" style="flex:1;min-width:150px">' +
+      sel('pm-tag', [['', '全部标签']].concat(tags.map(function (t) { return [t, '#' + t]; })), L.tag, 'max-width:140px') +
+      sel('pm-type', [['', '全部类型'], ['file', '文件'], ['link', '链接'], ['note', '笔记']], L.type, 'max-width:120px') +
+      sel('pm-sort', [['recent', '最近打开'], ['added', '最近添加'], ['opens', '使用最多'], ['name', '按名称']], L.sort, 'max-width:140px') +
+      '</div><div class="row" style="margin-top:8px">' + btn('＋ 上传文件', 'libForm', 'file', 'p', 'btn-sm') + btn('＋ 添加链接', 'libForm', 'link', null, 'btn-sm') + btn('＋ 写笔记', 'libForm', 'note', null, 'btn-sm') + '</div></div>';
+    if (ui.lib.form) html += formLib(ui.lib.form, f);
+    if (list.length === 0) return html + '<div class="card"><div class="empty">这个文件夹还没有资料。</div></div>';
     return html + list.map(function (m) { return materialCard(m); }).join('');
   }
-  function projectQuestions(p) {
-    var pq = ui.pq;
-    var all = projQuestions(p.id);
+  function folderQuestions(f) {
+    var pf = ui.pf;
+    var all = store.questions.filter(function (q) { return (q.folderId || '') === f.id; });
     var tags = allTags(all);
     var list = all.filter(function (q) {
-      if (pq.cat === '__none__') { if (q.cat) return false; } else if (pq.cat && (q.cat || '') !== pq.cat) return false;
-      if (pq.tag && (q.tags || []).indexOf(pq.tag) < 0) return false;
-      if (pq.type && q.type !== pq.type) return false;
-      if (pq.q && (q.stem || '').toLowerCase().indexOf(pq.q.toLowerCase()) < 0) return false;
+      if (pf.tag && (q.tags || []).indexOf(pf.tag) < 0) return false;
+      if (pf.type && q.type !== pf.type) return false;
+      if (pf.q && (q.stem || '').toLowerCase().indexOf(pf.q.toLowerCase()) < 0) return false;
       return true;
     });
-    var html = '<div class="card"><div class="row"><input id="pq-q" type="text" placeholder="搜索题干" value="' + esc(pq.q) + '" style="flex:1;min-width:160px">' +
-      sel('pq-cat', catOptions(true).concat([['__none__', '未分类']]), pq.cat, 'max-width:160px') +
-      sel('pq-tag', [['', '全部标签']].concat(tags.map(function (t) { return [t, '#' + t]; })), pq.tag, 'max-width:150px') +
-      sel('pq-type', [['', '全部题型'], ['single', '单选'], ['judge', '判断'], ['multi', '多选']], pq.type, 'max-width:130px') +
+    var html = '<div class="card"><div class="row"><input id="pq-q" type="text" placeholder="搜索题干" value="' + esc(pf.q) + '" style="flex:1;min-width:150px">' +
+      sel('pq-tag', [['', '全部标签']].concat(tags.map(function (t) { return [t, '#' + t]; })), pf.tag, 'max-width:140px') +
+      sel('pq-type', [['', '全部题型'], ['single', '单选'], ['judge', '判断'], ['multi', '多选']], pf.type, 'max-width:120px') +
       '</div><div class="row" style="margin-top:8px">' + btn('＋ 新建题目', 'qAdd', null, 'ok', 'btn-sm') +
-      btn('▶ 按当前筛选开始测验', 'startQuiz', p.id + '|quiz', 'p', 'btn-sm', list.length === 0 ? ' disabled' : '') +
+      btn('▶ 按当前筛选开始测验', 'startQuiz', f.id + '|quiz', 'p', 'btn-sm', list.length === 0 ? ' disabled' : '') +
       '<span class="grow"></span><span class="mut">筛出 ' + list.length + ' / ' + all.length + ' 题</span></div></div>';
-    if (ui.qform) html += formQuestion(ui.qform, p);
-    if (list.length === 0) return html + '<div class="card"><div class="empty">' + (all.length === 0 ? '还没有题目。可以点「＋ 新建题目」，或在资料卡片上点「就这份资料出题」。' : '没有符合条件的题目') + '</div></div>';
-    return html + list.map(function (q) {
-      var st = masteryState(user.mastery[q.id]);
-      var badge = st.mastered ? chip('已掌握', 'ok') : st.wrong ? chip('错题', 'bad') : st.a > 0 ? chip('练过 ' + st.a + ' 次') : chip('新题');
-      var mats = (q.materialIds || []).map(function (mid) { var m = materialById(mid); return m ? m.title : null; }).filter(Boolean);
-      return '<div class="card"><div class="card-title"><span>' + (TYPE_NAMES[q.type] || q.type) + ' · ' + (st.a > 0 ? '对 ' + st.c + '/' + st.a : '未作答') + '</span><span class="row">' + badge + btn('编辑', 'qEdit', q.id, null, 'btn-sm') + btn('删除', 'qDel', q.id, 'bad', 'btn-sm') + '</span></div>' +
-        '<div style="font-weight:600">' + esc(q.stem) + '</div>' +
-        '<div class="mut" style="margin-top:6px">' + q.options.map(function (o) { return (q.answer.indexOf(o.key) >= 0 ? '✅ ' : '') + esc(o.key) + '. ' + esc(o.text); }).join('　') + '</div>' +
-        (q.analysis ? '<div class="mut" style="margin-top:4px">解析：' + esc(q.analysis) + '</div>' : '') +
-        '<div class="row" style="margin-top:6px">' + chip(catName(q.cat)) + (q.tags || []).map(function (t) { return chip('#' + t); }).join(' ') +
-        (mats.length ? chip('📂 ' + mats.join('、')) : '') + '</div></div>';
-    }).join('');
+    if (ui.qform) html += formQuestion(ui.qform, f);
+    if (list.length === 0) return html + '<div class="card"><div class="empty">' + (all.length === 0 ? '这个文件夹还没有题目。可以新建，或在资料卡片点「出题」。' : '没有符合条件的题目') + '</div></div>';
+    return html + list.map(function (q) { return questionCard(q); }).join('');
   }
-  function projectOverview(p, st) {
-    var lv = userView();
-    var win = lv.daily.slice(-7);
+  function folderOverview(f, st) {
+    var v = userView();
+    var win = v.daily.slice(-7);
     var maxSec = Math.max.apply(null, win.map(function (w) { return w.sec; }).concat([1]));
     var tagStat = {};
-    projQuestions(p.id).forEach(function (q) {
-      var s = masteryState(user.mastery[q.id]);
-      if (!s.wrong) return;
+    subtreeQuestions(f.id).forEach(function (q) {
+      if (!masteryState(user.mastery[q.id]).wrong) return;
       (q.tags || []).forEach(function (t) { tagStat[t] = (tagStat[t] || 0) + 1; });
     });
     var weakTags = Object.keys(tagStat).map(function (t) { return { t: t, n: tagStat[t] }; }).sort(function (a, b) { return b.n - a.n; }).slice(0, 8);
-    var logs = user.logs.filter(function (l) { return l.projectId === p.id; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 8);
-    var rate = st.attempts ? Math.round((st.mastered / Math.max(st.qCount, 1)) * 100) : 0;
-    return '<div class="card"><div class="row">' +
-      chip('题目 ' + st.qCount) + chip('已掌握 ' + st.mastered, 'ok') + chip('错题 ' + st.wrong, st.wrong ? 'bad' : 'ok') + chip('掌握率 ' + rate + '%', 'gold') +
-      chip('资料 ' + st.mCount) + chip('资料已掌握 ' + st.mDone, 'ok') + chip('累计时长 ' + fmtLong(st.seconds)) + '</div>' +
-      '<div class="mut" style="margin-top:8px">' + (st.qCount === 0 ? '还没有题目。' : (st.attempts === 0 ? '还没有做过题，去「题目」页开一场测验吧。' : '累计作答 ' + st.attempts + ' 次。')) + '</div></div>' +
+    var logs = user.logs.filter(function (l) { return l.folderId === f.id; }).sort(function (a, b) { return b.at - a.at; }).slice(0, 8);
+    var rate = st.qCount ? Math.round((st.mastered / st.qCount) * 100) : 0;
+    return '<div class="card"><div class="row">' + chip('资料 ' + st.mCount) + chip('资料已掌握 ' + st.mDone, 'ok') +
+      chip('题目 ' + st.qCount) + chip('已掌握 ' + st.mastered, 'ok') + chip('错题 ' + st.wrong, st.wrong ? 'bad' : 'ok') +
+      chip('掌握率 ' + rate + '%', 'gold') + chip('累计时长 ' + fmtLong(st.seconds)) + '</div>' +
+      '<div class="mut" style="margin-top:8px">' + (st.qCount === 0 ? '还没有题目。' : (st.attempts === 0 ? '还没做过题，去「题目」页开一场测验吧。' : '累计作答 ' + st.attempts + ' 次。')) + '</div></div>' +
       '<div class="card"><div class="card-title"><span>近 7 日学习时长</span></div><div class="week">' +
       win.map(function (w) { var pct = Math.max(6, Math.round((w.sec / maxSec) * 100)); return '<div class="week-col" title="' + w.date + ' · ' + fmtLong(w.sec) + '"><div class="week-bar" style="height:' + pct + '%"></div><div class="week-day">' + w.label + '</div></div>'; }).join('') + '</div></div>' +
       '<div class="card"><div class="card-title"><span>薄弱标签</span></div>' +
@@ -1208,32 +1577,22 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   }
   function pageLib() {
     var L = ui.lib;
+    var tags = allTags(store.materials);
     var html = '<div class="card">' +
-      '<div class="row"><input id="lib-q" type="text" placeholder="搜索标题 / 标签 / 备注 / 文件名" value="' + esc(L.q) + '" style="flex:1;min-width:180px">' +
-      sel('lib-cat', catOptions(true).concat([['__none__', '未分类']]), L.cat, 'max-width:160px') +
-      sel('lib-type', [['', '全部类型'], ['file', '文件'], ['link', '链接'], ['note', '笔记']], L.type, 'max-width:130px') +
-      sel('lib-sort', [['recent', '最近打开'], ['added', '最近添加'], ['opens', '使用最多'], ['name', '按名称']], L.sort, 'max-width:150px') +
-      sel('lib-proj', [['', '全部项目']].concat(store.projects.map(function (p) { return [p.id, p.name]; })), L.projectFilter, 'max-width:180px') +
+      '<div class="row"><input id="lib-q" type="text" placeholder="搜索标题 / 标签 / 备注 / 文件名" value="' + esc(L.q) + '" style="flex:1;min-width:170px">' +
+      sel('lib-folder', folderOptions(true, '全部位置'), L.folderId, 'max-width:180px') +
+      sel('lib-tag', [['', '全部标签']].concat(tags.map(function (t) { return [t, '#' + t]; })), L.tag, 'max-width:140px') +
+      sel('lib-type', [['', '全部类型'], ['file', '文件'], ['link', '链接'], ['note', '笔记']], L.type, 'max-width:120px') +
+      sel('lib-sort', [['recent', '最近打开'], ['added', '最近添加'], ['opens', '使用最多'], ['name', '按名称']], L.sort, 'max-width:140px') +
       '</div><div class="row" style="margin-top:8px">' +
       btn('＋ 上传文件', 'libForm', 'file', 'p', 'btn-sm') + btn('＋ 添加链接', 'libForm', 'link', null, 'btn-sm') + btn('＋ 写笔记', 'libForm', 'note', null, 'btn-sm') +
-      btn('分类管理', 'catMgr', null, null, 'btn-sm') + btn('导入资料包', 'libImport', null, null, 'btn-sm') +
-      btn('导出(含文件)', 'libExport', '1', null, 'btn-sm') + btn('导出(仅索引)', 'libExport', '0', null, 'btn-sm') +
+      btn('导入资料包', 'libImport', null, null, 'btn-sm') + btn('导出(含文件)', 'libExport', '1', null, 'btn-sm') + btn('导出(仅索引)', 'libExport', '0', null, 'btn-sm') +
       '<span class="grow"></span><span class="mut">共 ' + store.materials.length + ' 份</span></div>' +
       (filesOk ? '' : '<div class="mut" style="margin-top:6px;color:var(--bad)">当前环境无法保存大文件，请使用在线网址版。</div>') + '</div>';
-    if (L.catMgr) {
-      html += '<div class="card"><div class="card-title"><span>分类管理（资料与题目共用）</span></div><div class="row">' +
-        '<input id="cat-new" type="text" placeholder="新分类名称，如：公式手册" style="flex:1;min-width:180px">' + btn('添加分类', 'catAdd', null, 'ok', 'btn-sm') + '</div>' +
-        (store.categories.length === 0 ? '<div class="empty">还没有分类</div>' :
-          store.categories.map(function (c) {
-            var nm = store.materials.filter(function (m) { return m.cat === c.id; }).length;
-            var nq = store.questions.filter(function (q) { return q.cat === c.id; }).length;
-            return '<div class="row" style="margin-top:6px"><span class="grow">' + esc(c.name) + ' <span class="mut">(资料 ' + nm + ' · 题目 ' + nq + ')</span></span>' + btn('重命名', 'catRename', c.id, null, 'btn-sm') + btn('删除', 'catDel', c.id, 'bad', 'btn-sm') + '</div>';
-          }).join('')) + '</div>';
-    }
     if (L.form) html += formLib(L.form, null);
     var list = store.materials.filter(function (m) {
-      if (L.projectFilter && (m.projectId || '') !== L.projectFilter) return false;
-      if (L.cat === '__none__') { if (m.cat) return false; } else if (L.cat && (m.cat || '') !== L.cat) return false;
+      if (L.folderId) { if (descendants(L.folderId).indexOf(m.folderId || '') < 0) return false; }
+      if (L.tag && (m.tags || []).indexOf(L.tag) < 0) return false;
       if (L.type && m.kind !== L.type) return false;
       if (L.q) {
         var hay = ((m.title || '') + ' ' + (m.tags || []).join(' ') + ' ' + (m.note || '') + ' ' + (m.text || '') + ' ' + (m.fileName || '') + ' ' + (m.url || '')).toLowerCase();
@@ -1250,7 +1609,111 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (list.length === 0) return html + '<div class="card"><div class="empty">' + (store.materials.length === 0 ? '还没有资料。上传 PDF / PPT / 图片，或收藏网址、写笔记。' : '没有符合条件的资料') + '</div></div>';
     return html + list.map(function (m) { return materialCard(m); }).join('');
   }
-  function formLib(f, fixedProject) {
+  function pageLists() {
+    var html = '<div class="card"><div class="card-title"><span>新建学习清单</span></div>' +
+      '<div class="row"><input id="list-name" type="text" placeholder="如：三天速通极限 / 今日任务" style="flex:1;min-width:200px">' +
+      sel('list-folder-sel', folderOptions(true, '不归属文件夹'), '', 'max-width:200px') + btn('创建清单', 'listAdd', null, 'ok', 'btn-sm') + '</div>' +
+      '<div class="mut" style="margin-top:6px">清单 = 有序的学习流程：看资料 → 做题 → 计时 → 错题回顾，首页会显示今日待办。</div></div>';
+    if (store.lists.length === 0) return html + '<div class="card"><div class="empty">还没有清单。</div></div>';
+    return html + store.lists.map(function (l) {
+      var td = listToday(l);
+      var f = l.folderId ? folderById(l.folderId) : null;
+      return '<div class="card"><div class="row"><span class="grow"><div style="font-weight:700">' + esc(l.name) + '</div>' +
+        '<div class="mut">' + (f ? '📁 ' + esc(f.name) + ' · ' : '') + '今日 ' + td.done + ' / ' + td.due + ' · 共 ' + td.total + ' 项' + (td.overdue ? ' · ' + td.overdue + ' 项逾期' : '') + '</div></span>' +
+        chip('今日 ' + td.pct + '%', td.pct >= 100 && td.due ? 'ok' : 'gold') + btn('打开', 'listOpen', l.id, 'p', 'btn-sm') + btn('重命名', 'listRename', l.id, null, 'btn-sm') + btn('删除', 'listDel', l.id, 'bad', 'btn-sm') + '</div>' +
+        '<div class="bar" style="margin-top:6px"><div class="bar-in' + (td.pct >= 100 && td.due ? ' bar-in-ok' : '') + '" style="width:' + Math.max(td.pct, 2) + '%"></div></div></div>';
+    }).join('');
+  }
+  function itemScheduleForm(f, submitAct) {
+    var plan = f.repeat === 'daily' ? 'daily' : f.repeat === 'weekly' ? 'weekly' : (f.due ? (f.due === todayKey() ? 'today' : f.due === dateKey(addDays(new Date(), 1)) ? 'tomorrow' : 'date') : 'none');
+    var html = '<div class="row" style="margin-top:8px"><span class="mut">计划</span>' +
+      [['none', '不排期'], ['today', '今天'], ['tomorrow', '明天'], ['daily', '每天'], ['weekly', '每周…']].map(function (o) {
+        return btn(o[1], 'itemPlan', o[0], plan === o[0] ? 'p' : null, 'btn-sm');
+      }).join('') +
+      (plan === 'date' ? '<input id="item-date" type="date" value="' + esc(f.due) + '" style="max-width:170px">' : '') +
+      '</div>';
+    if (f.repeat === 'weekly') {
+      html += '<div class="row" style="margin-top:6px"><span class="mut">星期</span>' +
+        [1, 2, 3, 4, 5, 6, 0].map(function (d) {
+          var on = (f.days || []).indexOf(d) >= 0;
+          return '<span class="tag' + (on ? ' tag-on' : '') + '" data-act="itemDay" data-arg="' + d + '">周' + WEEK_CN[d] + '</span>';
+        }).join('') + '</div>';
+    }
+    html += '<div class="row" style="margin-top:10px">' + btn(f.id ? '保存计划' : '加入清单', submitAct, null, 'ok') + btn('取消', 'itemFormCancel') + '</div>';
+    return html;
+  }
+  function pageList() {
+    var l = listById(ui.listId);
+    if (!l) { ui.listId = null; return pageLists(); }
+    var td = listToday(l);
+    var html = '<div class="row" style="margin-bottom:10px">' + btn('← 返回清单列表', 'listBack') + '<span style="font-weight:800;font-size:16px">' + esc(l.name) + '</span>' +
+      chip('今日 ' + td.done + ' / ' + td.due, td.pct >= 100 && td.due ? 'ok' : 'gold') + (td.overdue ? chip(td.overdue + ' 项逾期', 'bad') : '') + '</div>' +
+      '<div class="card"><div class="bar"><div class="bar-in' + (td.pct >= 100 && td.due ? ' bar-in-ok' : '') + '" style="width:' + Math.max(td.pct, 2) + '%"></div></div>' +
+      '<div class="row" style="margin-top:10px">' + Object.keys(ITEM_META).map(function (k) {
+        return btn(ITEM_META[k].icon + ' ' + ITEM_META[k].label, 'itemForm', k, null, 'btn-sm');
+      }).join('') + '</div></div>';
+    if (ui.itemForm) {
+      var f = ui.itemForm;
+      html += '<div class="card"><div class="card-title"><span>添加：' + ITEM_META[f.kind].label + '</span></div>';
+      if (f.kind === 'material') {
+        var mats = l.folderId ? subtreeMaterials(l.folderId) : store.materials;
+        html += sel('item-ref', [['', '请选择资料']].concat(mats.map(function (m) { return [m.id, libIcon(m) + ' ' + m.title]; })), '', null);
+      } else if (f.kind === 'quiz' || f.kind === 'review') {
+        html += sel('item-ref', [['', '请选择文件夹（含其子文件夹题目）']].concat(folderOptions(false)), '', null);
+      } else if (f.kind === 'timer') {
+        html += '<input id="item-min" type="number" min="1" max="600" value="25"> <span class="mut">分钟</span>';
+      } else {
+        html += '<input id="item-text" type="text" placeholder="待办内容，如：整理错题本">';
+      }
+      html += itemScheduleForm(f, 'itemAdd') + '</div>';
+    }
+    if (ui.itemEdit) {
+      var e = ui.itemEdit;
+      html += '<div class="card"><div class="card-title"><span>编辑计划：' + esc(itemTitle(e)) + '</span></div>';
+      if (e.kind === 'timer') html += '<input id="item-min" type="number" min="1" max="600" value="' + esc(e.minutes) + '"> <span class="mut">分钟</span>';
+      if (e.kind === 'task') html += '<input id="item-text" type="text" value="' + esc(e.text) + '">';
+      if (e.kind === 'material' || e.kind === 'quiz' || e.kind === 'review') {
+        var opts = e.kind === 'material'
+          ? (l.folderId ? subtreeMaterials(l.folderId) : store.materials).map(function (m) { return [m.id, libIcon(m) + ' ' + m.title]; })
+          : folderOptions(false);
+        html += sel('item-ref', opts, e.refId, null);
+      }
+      html += itemScheduleForm(e, 'itemEditSave') + '</div>';
+    }
+    if ((l.items || []).length === 0) return html + '<div class="card"><div class="empty">清单是空的。用上面的按钮把「资料 / 测验 / 计时 / 待办」加进来。</div></div>';
+    return html + l.items.map(function (it, i) {
+      var tk = todayKey();
+      var done = isDoneToday(it, tk);
+      var od = isOverdue(it, tk);
+      var sch = scheduleLabel(it);
+      var note = doneNote(it, tk);
+      var row = '<div class="item' + (done ? ' item-done' : '') + '">' +
+        '<label class="label-check"><input type="checkbox" data-act="itemToggle" data-arg="' + it.id + '"' + (done ? ' checked' : '') + ' title="手动确认完成"></label>' +
+        '<span style="font-size:18px">' + ITEM_META[it.kind].icon + '</span>' +
+        '<span class="grow"><div style="font-weight:600' + (done ? ';text-decoration:line-through' : '') + '">' + esc(itemTitle(it)) + '</div>' +
+        '<div class="mut">' + ITEM_META[it.kind].label + ' · 📅 ' + esc(sch) + (od ? '（已逾期）' : '') + (note ? ' · ' + esc(note) : '') + (done && it.doneAt ? ' · 完成于 ' + fmtDate(it.doneAt) + ' ' + fmtClock(it.doneAt) : '') + '</div></span>' +
+        (od ? chip('逾期', 'bad') : '') +
+        btn('开始', 'itemStart', it.id, 'p', 'btn-sm') +
+        btn('计划', 'itemEdit', it.id, null, 'btn-sm') +
+        btn('推迟', 'itemPostponePanel', it.id, null, 'btn-sm') +
+        btn('↑', 'itemMove', it.id + '|up', null, 'btn-sm') + btn('↓', 'itemMove', it.id + '|down', null, 'btn-sm') +
+        btn('删除', 'itemDel', it.id, 'bad', 'btn-sm') + '</div>';
+      if (ui.itemPostpone === it.id) {
+        row += '<div class="card" style="margin:-4px 0 10px 12px"><div class="card-title"><span>推迟「' + esc(itemTitle(it)) + '」</span></div>' +
+          (it.repeat
+            ? '<div class="mut">这是重复任务（' + esc(sch) + '）。可以跳过今天，明天照常出现。</div><div class="row" style="margin-top:8px">' + btn('跳过今天', 'itemSkipToday', it.id, 'ok') + btn('取消', 'itemPostponeCancel') + '</div>'
+            : '<div class="row">' +
+              btn('+1 天', 'itemPostpone', it.id + '|1', null, 'btn-sm') +
+              btn('+3 天', 'itemPostpone', it.id + '|3', null, 'btn-sm') +
+              btn('+7 天', 'itemPostpone', it.id + '|7', null, 'btn-sm') +
+              '<input id="postpone-date" type="date" value="' + esc(it.due || todayKey()) + '" style="max-width:170px">' +
+              btn('改到该日期', 'itemPostponeDate', it.id, 'ok', 'btn-sm') + btn('取消', 'itemPostponeCancel', null, null, 'btn-sm') + '</div>') +
+          '</div>';
+      }
+      return row;
+    }).join('');
+  }
+  function formLib(f, fixedFolder) {
     var html = '<div class="card"><div class="card-title"><span>' + (f.id ? '编辑资料' : '添加资料') + '</span><span class="row"><span class="mut">类型</span>' +
       (f.id ? '<span class="mut">' + kindLabel(f.kind) + '（不可更改）</span>' :
         ['file', 'link', 'note'].map(function (k) { return btn(kindLabel(k), 'libForm', k, f.kind === k ? 'p' : null, 'btn-sm'); }).join('')) + '</span></div>';
@@ -1262,23 +1725,19 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (f.kind === 'link') html += '<input id="lib-url" type="text" placeholder="https://…（网址）" value="' + esc(f.url || '') + '" style="margin-top:8px">';
     if (f.kind === 'note') html += '<textarea id="lib-text" placeholder="笔记内容" style="margin-top:8px;min-height:120px">' + esc(f.text || '') + '</textarea>';
     html += '<div class="row" style="margin-top:8px">' +
-      sel('lib-cat-sel', catOptions(false), f.cat, 'max-width:170px') +
-      '<input id="lib-tags" type="text" placeholder="标签，空格分隔，如 高数 公式" value="' + esc(f.tags || '') + '" style="flex:1;min-width:150px">' +
-      (fixedProject ? '' : sel('lib-proj-sel', [['', '不归属项目']].concat(store.projects.map(function (p) { return [p.id, p.name]; })), f.projectId, 'max-width:190px')) +
-      '</div>';
+      (fixedFolder ? '' : sel('lib-folder-sel', folderOptions(true, '不归属文件夹'), f.folderId, 'max-width:220px')) +
+      '<input id="lib-tags" type="text" placeholder="标签，空格分隔，如 高数 公式" value="' + esc(f.tags || '') + '" style="flex:1;min-width:150px"></div>';
     html += '<input id="lib-note" type="text" placeholder="备注（可选）" value="' + esc(f.note || '') + '" style="margin-top:8px">';
-    var pid = fixedProject ? fixedProject.id : f.projectId;
-    var qs = pid ? projQuestions(pid) : [];
+    var fid = fixedFolder ? fixedFolder.id : f.folderId;
+    var qs = fid ? store.questions.filter(function (q) { return (q.folderId || '') === fid; }) : [];
     if (qs.length) {
       html += '<div class="mut" style="margin-top:8px">关联题目（读完这份资料就做这几题）</div><div class="picklist">' +
-        qs.map(function (q) {
-          return '<label class="label-check"><input type="checkbox" data-act="libToggleQ" data-arg="' + q.id + '"' + (f.questionIds.indexOf(q.id) >= 0 ? ' checked' : '') + '><span>' + esc(q.stem.slice(0, 40)) + '</span></label>';
-        }).join('') + '</div>';
+        qs.map(function (q) { return '<label class="label-check"><input type="checkbox" data-act="libToggleQ" data-arg="' + q.id + '"' + (f.questionIds.indexOf(q.id) >= 0 ? ' checked' : '') + '><span>' + esc(q.stem.slice(0, 40)) + '</span></label>'; }).join('') + '</div>';
     }
     html += '<div class="row" style="margin-top:10px">' + btn(f.id ? '保存修改' : '保存资料', 'libAdd', null, 'ok') + btn('取消', 'libCancel') + '</div></div>';
     return html;
   }
-  function formQuestion(f, p) {
+  function formQuestion(f, folder) {
     var opts = f.type === 'judge' ? [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }] : f.options;
     var html = '<div class="card"><div class="card-title"><span>' + (f.id ? '编辑题目' : '新建题目') + '</span><span class="row"><span class="mut">题型</span>' +
       ['single', 'judge', 'multi'].map(function (t) { return btn(TYPE_NAMES[t], 'qType', t, f.type === t ? 'p' : null, 'btn-sm'); }).join('') + '</span></div>';
@@ -1293,14 +1752,11 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     }).join('');
     if (f.type !== 'judge') html += '<div class="row" style="margin-top:6px">' + btn('+ 选项', 'qAddOpt', null, null, 'btn-sm') + btn('- 删末项', 'qDelOpt', null, null, 'btn-sm') + '<span class="mut">勾选左侧设定正确答案' + (f.type === 'multi' ? '（可多选）' : '') + '</span></div>';
     html += '<input id="q-analysis" type="text" placeholder="解析（可选）" value="' + esc(f.analysis) + '" style="margin-top:8px">';
-    html += '<div class="row" style="margin-top:8px">' + sel('q-cat-sel', catOptions(false), f.cat, 'max-width:170px') +
-      '<input id="q-tags" type="text" placeholder="标签，空格分隔，如 政治 法律" value="' + esc(f.tags) + '" style="flex:1;min-width:160px"></div>';
-    var mats = p ? projMaterials(p.id) : [];
+    html += '<input id="q-tags" type="text" placeholder="标签，空格分隔，如 政治 法律" value="' + esc(f.tags) + '" style="margin-top:8px">';
+    var mats = folder ? store.materials.filter(function (m) { return (m.folderId || '') === folder.id; }) : [];
     if (mats.length) {
       html += '<div class="mut" style="margin-top:8px">关联资料（做完这题可回看）</div><div class="picklist">' +
-        mats.map(function (m) {
-          return '<label class="label-check"><input type="checkbox" data-act="qToggleMat" data-arg="' + m.id + '"' + (f.materialIds.indexOf(m.id) >= 0 ? ' checked' : '') + '><span>' + libIcon(m) + ' ' + esc(m.title.slice(0, 40)) + '</span></label>';
-        }).join('') + '</div>';
+        mats.map(function (m) { return '<label class="label-check"><input type="checkbox" data-act="qToggleMat" data-arg="' + m.id + '"' + (f.materialIds.indexOf(m.id) >= 0 ? ' checked' : '') + '><span>' + libIcon(m) + ' ' + esc(m.title.slice(0, 40)) + '</span></label>'; }).join('') + '</div>';
     }
     html += '<div class="row" style="margin-top:10px">' + btn('保存题目', 'qSave', null, 'ok') + btn('取消', 'qCancel') + '</div></div>';
     return html;
@@ -1311,7 +1767,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       var okN = q.results.filter(function (r) { return r.ok; }).length;
       var total = q.results.length;
       var acc = total ? Math.round((okN / total) * 100) : 0;
-      var html = '<div class="card"><div style="font-size:16px;font-weight:800">' + esc(q.projectName) + ' · ' + (q.mode === 'review' ? '错题回顾' : '测验') + '完成 🎉</div>' +
+      var html = '<div class="card"><div style="font-size:16px;font-weight:800">' + esc(q.folderName) + ' · ' + (q.mode === 'review' ? '错题回顾' : '测验') + '完成 🎉</div>' +
         '<div class="row" style="margin-top:8px">' + chip('答对 ' + okN + ' / ' + total, 'ok') + chip('正确率 ' + acc + '%', 'gold') + chip('用时 ' + fmtLong(Math.round((Date.now() - q.startAt) / 1000))) + '</div>';
       if (q.status === 'summary') {
         html += '<div style="margin-top:12px;font-weight:700">自我评价（反馈循环）</div><div class="row" style="margin-top:6px">' +
@@ -1322,24 +1778,24 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
           '<textarea id="q-comment" placeholder="补充想说的（可选）" style="margin-top:10px"></textarea>' +
           '<div class="row" style="margin-top:10px">' + btn('保存并领取积分', 'qSaveSession', null, 'p', null, q.rating === 0 ? ' disabled' : '') + btn('不保存，直接返回', 'qExit') + '</div>';
       } else {
-        html += '<div class="row" style="margin-top:10px">' + chip('+' + q.pts + ' 积分已发放', 'gold') + btn('返回项目', 'qExit', null, 'p') + '</div>';
+        html += '<div class="row" style="margin-top:10px">' + chip('+' + q.pts + ' 积分已发放', 'gold') + btn('返回', 'qExit', null, 'p') + '</div>';
       }
       return html + '</div>';
     }
     var cur = q.qs[q.idx];
     var pct = Math.round(((q.idx + (q.answered ? 1 : 0)) / q.qs.length) * 100);
-    var mats = (cur.materialIds || []).map(function (mid) { var m = materialById(mid); return m; }).filter(Boolean);
+    var mats = (cur.materialIds || []).map(function (mid) { return materialById(mid); }).filter(Boolean);
     var html = '<div class="card">' +
       '<div class="progress">' + btn('✕ 退出', 'qExit', null, null, 'btn-sm') + '<span class="grow"></span><span>第 ' + (q.idx + 1) + ' / ' + q.qs.length + ' 题</span><span>' + pct + '%</span></div>' +
       '<div class="bar"><div class="bar-in" style="width:' + pct + '%"></div></div>' +
-      '<div class="mut" style="margin-top:8px">' + esc(q.projectName + ' · ' + (q.mode === 'review' ? '错题回顾' : '测验')) + '</div>' +
-      '<div class="row" style="margin-top:10px">' + chip(TYPE_NAMES[cur.type] || cur.type, 'gold') + chip(catName(cur.cat)) + (cur.tags || []).map(function (t) { return chip('#' + t); }).join('') + '</div>' +
+      '<div class="mut" style="margin-top:8px">' + esc(q.folderName + ' · ' + (q.mode === 'review' ? '错题回顾' : '测验')) + '</div>' +
+      '<div class="row" style="margin-top:10px">' + chip(TYPE_NAMES[cur.type] || cur.type, 'gold') + (cur.tags || []).map(function (t) { return chip('#' + t); }).join('') + '</div>' +
       '<div style="font-weight:700;margin:8px 0">' + esc(cur.stem) + '</div>';
     if (mats.length) html += '<div class="row" style="margin-bottom:6px">' + mats.map(function (m) { return btn('📂 ' + m.title.slice(0, 16), 'libOpen', m.id, null, 'btn-sm'); }).join('') + '</div>';
     html += cur.options.map(function (o) {
-      var cls = 'option', sel0 = q.chosen.indexOf(o.key) >= 0;
-      if (sel0) cls += ' option-sel';
-      if (q.answered) { if (cur.answer.indexOf(o.key) >= 0) cls += ' option-ok'; else if (sel0) cls += ' option-bad'; }
+      var cls = 'option', s0 = q.chosen.indexOf(o.key) >= 0;
+      if (s0) cls += ' option-sel';
+      if (q.answered) { if (cur.answer.indexOf(o.key) >= 0) cls += ' option-ok'; else if (s0) cls += ' option-bad'; }
       return '<div class="' + cls + '" data-act="qOpt" data-arg="' + esc(o.key) + '"><span class="opt-key">' + esc(o.key) + '</span><span>' + esc(o.text) + '</span></div>';
     }).join('');
     if (q.answered) {
@@ -1369,9 +1825,8 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
         '<input id="cd-min" type="number" min="1" max="600" value="' + esc(t.cdMin) + '" style="width:88px">' + btn('设定', 'timerCustom', null, null, 'btn-sm') + '<span class="mut">分钟</span></div>';
     }
     html += '<div class="row" style="margin-top:8px">' +
-      sel('t-proj', [['', '📁 自由学习（不选项目）']].concat(store.projects.map(function (p) { return [p.id, p.name]; })), t.projectId, 'flex:1;min-width:190px;max-width:280px') +
-      '<input id="t-note" type="text" placeholder="备注（可选），如：看教材" value="' + esc(t.note) + '" style="flex:1;min-width:160px"' + (busy ? ' disabled' : '') + '>' +
-      '</div>';
+      sel('t-folder', folderOptions(true, '📁 自由学习（不选文件夹）'), t.folderId, 'flex:1;min-width:190px;max-width:300px') +
+      '<input id="t-note" type="text" placeholder="备注（可选），如：看教材" value="' + esc(t.note) + '" style="flex:1;min-width:160px"' + (busy ? ' disabled' : '') + '></div>';
     html += '<div class="row" style="justify-content:center;margin-top:12px">';
     if (t.status === 'idle') html += btn(t.mode === 'cd' ? '▶ 开始倒计时' : '▶ 开始计时', 'timerStart', null, 'p');
     if (t.status === 'running') html += btn('⏸ 暂停', 'timerPause');
@@ -1381,7 +1836,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (t.status === 'finished') html += btn('放弃', 'timerReset');
     if (busy) html += btn('✕ 放弃并重置', 'timerReset', null, 'bad');
     html += '</div></div>';
-    html += '<div class="card"><div class="card-title"><span>使用说明</span></div><div class="mut">① 正计时：自由学习，随时结束；倒计时：番茄钟，预设或自定义分钟<br>② 可选绑定学习项目，不选则记为「自由学习」<br>③ 结束/到时后自动计入统计：今日时长、连胜、7/30/90 天趋势、项目占比、时段分布<br>④ 暂停期间不计时</div></div>';
+    html += '<div class="card"><div class="card-title"><span>使用说明</span></div><div class="mut">① 正计时：自由学习，随时结束；倒计时：番茄钟<br>② 可绑定文件夹，不选则记为「自由学习」<br>③ 结束/到时后自动计入统计<br>④ 暂停期间不计时</div></div>';
     return html;
   }
   function pageStats() {
@@ -1410,9 +1865,9 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
           return '<div class="week-col" title="' + w.date + ' · ' + fmtLong(w.sec) + (w.sessions ? ' · ' + w.sessions + ' 次' : '') + '"><div class="week-bar" style="height:' + pct + '%;opacity:' + (w.sec > 0 ? 1 : 0.15) + '"></div><div class="week-day">' + w.label + '</div></div>';
         }).join('') + '</div>') + '</div>';
     html += '<div class="row"><div style="flex:1;min-width:250px">';
-    html += '<div class="card"><div class="card-title"><span>📁 项目时长占比</span><span class="mut">' + (v.totalSec ? '共 ' + fmtLong(v.totalSec) : '') + '</span></div>' +
-      (v.proj.length === 0 ? '<div class="empty">暂无记录</div>' :
-        v.proj.map(function (x) {
+    html += '<div class="card"><div class="card-title"><span>📁 文件夹时长占比</span><span class="mut">' + (v.totalSec ? '共 ' + fmtLong(v.totalSec) : '') + '</span></div>' +
+      (v.fold.length === 0 ? '<div class="empty">暂无记录</div>' :
+        v.fold.map(function (x) {
           var pct = v.totalSec ? Math.round((x.seconds / v.totalSec) * 100) : 0;
           return '<div style="margin-top:8px"><div class="row"><span class="grow" style="font-size:13px">' + esc(x.name) + '（' + x.sessions + ' 次）</span><span class="mut">' + fmtLong(x.seconds) + '</span></div>' +
             '<div class="hbar" style="margin-top:4px"><div class="hbar-in" style="width:' + Math.max(pct, 2) + '%;background:var(--gold)"></div></div><div class="mut">占比 ' + pct + '%</div></div>';
@@ -1425,14 +1880,10 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     html += '</div><div style="flex:1;min-width:250px">';
     html += '<div class="card"><div class="card-title"><span>📂 资料使用 TOP</span></div>' +
       (v.mats.length === 0 ? '<div class="empty">暂无资料</div>' :
-        v.mats.map(function (m, i) {
-          return '<div class="row" style="margin-top:6px">' + chip(String(i + 1)) + '<span class="grow" style="font-size:13px">' + esc(m.title) + '</span><span class="mut">打开 ' + m.opens + ' 次</span></div>';
-        }).join('')) + '</div>';
+        v.mats.map(function (m, i) { return '<div class="row" style="margin-top:6px">' + chip(String(i + 1)) + '<span class="grow" style="font-size:13px">' + esc(m.title) + '</span><span class="mut">打开 ' + m.opens + ' 次</span></div>'; }).join('')) + '</div>';
     html += '<div class="card"><div class="card-title"><span>🕑 最近学习时刻</span></div>' +
       (v.recents.length === 0 ? '<div class="empty">暂无记录</div>' :
-        v.recents.slice(0, 10).map(function (l) {
-          return '<div class="row" style="margin-top:6px">' + chip(fmtDate(l.at) + ' ' + fmtClock(l.at)) + '<span class="grow" style="font-size:13px">' + esc(l.project) + '</span><span class="mut">' + fmtLong(l.seconds) + '</span></div>';
-        }).join('')) + '</div>';
+        v.recents.slice(0, 10).map(function (l) { return '<div class="row" style="margin-top:6px">' + chip(fmtDate(l.at) + ' ' + fmtClock(l.at)) + '<span class="grow" style="font-size:13px">' + esc(l.folder) + '</span><span class="mut">' + fmtLong(l.seconds) + '</span></div>'; }).join('')) + '</div>';
     return html + '</div></div>';
   }
   function render() {
@@ -1442,12 +1893,17 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var body;
     if (ui.quiz) body = pageQuiz();
     else if (ui.page === 'home') body = pageHome(v);
-    else if (ui.page === 'projects') body = ui.projectId ? pageProject() : pageProjects();
+    else if (ui.page === 'folders') body = pageFolders();
+    else if (ui.page === 'folder') body = pageFolder();
     else if (ui.page === 'lib') body = pageLib();
+    else if (ui.page === 'lists') body = pageLists();
+    else if (ui.page === 'list') body = pageList();
     else if (ui.page === 'timer') body = pageTimer();
     else if (ui.page === 'stats') body = pageStats();
     else body = pageHome(v);
-    app.innerHTML = header(v) + body + (ui.toast ? '<div class="toast">' + esc(ui.toast) + '</div>' : '');
+    app.innerHTML = header(v) + body +
+      '<div class="mut" style="text-align:center;margin:4px 0 18px">学习空间 ' + APP_VERSION + ' · 数据保存在本机浏览器 · 建议每周导出备份</div>' +
+      (ui.toast ? '<div class="toast">' + esc(ui.toast) + '</div>' : '');
     if (ui.lib.keepFocus) {
       var fi = document.getElementById(ui.lib.keepFocus);
       ui.lib.keepFocus = null;
@@ -1466,11 +1922,13 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       if (act === 'qAns') { ACT.qAns(arg); return; }
       if (act === 'qToggleMat') { ACT.qToggleMat(arg); return; }
       if (act === 'libToggleQ') { ACT.libToggleQ(arg); return; }
+      if (act === 'itemToggle') { ACT.itemToggle(arg); return; }
       return;
     }
     if (el.tagName === 'SELECT') return;
     if (!ACT[act]) return;
     if (act === 'startQuiz') { var p = String(arg).split('|'); ACT.startQuiz(p[0], p[1]); return; }
+    if (act === 'itemMove') { ACT.itemMove(arg); return; }
     if (act === 'timerPreset' || act === 'statsDays' || act === 'qRate') { ACT[act](Number(arg)); return; }
     if (arg === null || arg === undefined) { ACT[act](); return; }
     ACT[act](arg);
@@ -1481,25 +1939,65 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (el.id === 'import-file') { onImportFile(el); return; }
     if (el.id === 'lib-import') { onLibImportFile(el); return; }
     if (el.id === 'lib-q') { ui.lib.q = el.value; ui.lib.keepFocus = 'lib-q'; render(); return; }
-    if (el.id === 'lib-cat') { ui.lib.cat = el.value; render(); return; }
+    if (el.id === 'lib-folder') { ui.lib.folderId = el.value; render(); return; }
+    if (el.id === 'lib-tag') { ui.lib.tag = el.value; render(); return; }
     if (el.id === 'lib-type') { ui.lib.type = el.value; render(); return; }
     if (el.id === 'lib-sort') { ui.lib.sort = el.value; render(); return; }
-    if (el.id === 'lib-proj') { ui.lib.projectFilter = el.value; render(); return; }
+    if (el.id === 'lib-folder-sel' && ui.lib.form) { ui.lib.form.folderId = el.value; render(); return; }
     if (el.id === 'pm-q') { ui.pm.q = el.value; ui.lib.keepFocus = 'pm-q'; render(); return; }
-    if (el.id === 'pm-cat') { ui.pm.cat = el.value; render(); return; }
+    if (el.id === 'pm-tag') { ui.pm.tag = el.value; render(); return; }
     if (el.id === 'pm-type') { ui.pm.type = el.value; render(); return; }
     if (el.id === 'pm-sort') { ui.pm.sort = el.value; render(); return; }
-    if (el.id === 'pq-q') { ui.pq.q = el.value; ui.lib.keepFocus = 'pq-q'; render(); return; }
-    if (el.id === 'pq-cat') { ui.pq.cat = el.value; render(); return; }
-    if (el.id === 'pq-tag') { ui.pq.tag = el.value; render(); return; }
-    if (el.id === 'pq-type') { ui.pq.type = el.value; render(); return; }
-    if (el.id === 't-proj') { ui.timer.projectId = el.value; render(); return; }
+    if (el.id === 'pq-q') { ui.pf.q = el.value; ui.lib.keepFocus = 'pq-q'; render(); return; }
+    if (el.id === 'pq-tag') { ui.pf.tag = el.value; render(); return; }
+    if (el.id === 'pq-type') { ui.pf.type = el.value; render(); return; }
+    if (el.id === 't-folder') { ui.timer.folderId = el.value; render(); return; }
     if (el.id === 't-note') { ui.timer.note = el.value; return; }
-    if (el.id === 'lib-proj-sel' && ui.lib.form) { ui.lib.form.projectId = el.value; render(); return; }
+    if (el.id === 'item-date') { var f0 = ui.itemEdit || ui.itemForm; if (f0) { f0.due = el.value; f0.repeat = ''; render(); } return; }
   }
   function boot() {
     document.addEventListener('click', onClick);
     document.addEventListener('change', onChange);
+    var lastOver = null;
+    function markOver(el) {
+      if (lastOver && lastOver !== el && lastOver.classList) lastOver.classList.remove('over');
+      if (el && el.classList) el.classList.add('over');
+      lastOver = el;
+    }
+    function clearOver() { if (lastOver && lastOver.classList) lastOver.classList.remove('over'); lastOver = null; }
+    document.addEventListener('dragstart', function (e) {
+      var el = e.target.closest ? e.target.closest('[data-drag]') : null;
+      if (!el) return;
+      var payload = el.getAttribute('data-drag');
+      ui.drag = payload;
+      ui.folderMenu = null;
+      if (el.classList) el.classList.add('dragging');
+      try { e.dataTransfer.setData('text/plain', payload); e.dataTransfer.effectAllowed = 'move'; } catch (err) {}
+      showDropBar(payload);
+    });
+    document.addEventListener('dragover', function (e) {
+      if (!ui.drag) return;
+      var el = e.target.closest ? e.target.closest('[data-drop]') : null;
+      if (!el) return;
+      e.preventDefault();
+      try { e.dataTransfer.dropEffect = 'move'; } catch (err) {}
+      markOver(el);
+    });
+    document.addEventListener('dragleave', function () { clearOver(); });
+    document.addEventListener('drop', function (e) {
+      if (!ui.drag) return;
+      var el = e.target.closest ? e.target.closest('[data-drop]') : null;
+      if (!el) return;
+      e.preventDefault();
+      clearOver();
+      ACT.dropTo(el.getAttribute('data-drop') || '');
+    });
+    document.addEventListener('dragend', function (e) {
+      clearOver();
+      var el = e.target.closest ? e.target.closest('[data-drag]') : null;
+      if (el && el.classList) el.classList.remove('dragging');
+      if (ui.drag) { ui.drag = null; hideDropBar(); }
+    });
     var imp = document.createElement('input');
     imp.type = 'file'; imp.accept = '.json,application/json'; imp.id = 'import-file'; imp.style.display = 'none';
     document.body.appendChild(imp);
@@ -1508,6 +2006,15 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     document.body.appendChild(imp2);
     render();
   }
+  ACT.listAddItemHere = function (fid) {
+    var f = folderById(fid);
+    var name = prompt('新建清单名称', f ? (f.name + ' 学习流程') : '新清单');
+    if (!name) return;
+    var l = { id: genId('l'), name: name.trim(), folderId: fid, createdAt: Date.now(), items: [] };
+    store.lists.push(l); saveStore();
+    ui.page = 'list'; ui.listId = l.id; ui.itemForm = null;
+    render(); toast('清单已创建，添加任务吧');
+  };
   try { if (typeof window !== 'undefined') window.__learnhub = { ui: ui, render: render, ACT: ACT, get store() { return store; } }; } catch (e) {}
   if (typeof document !== 'undefined' && typeof localStorage !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
