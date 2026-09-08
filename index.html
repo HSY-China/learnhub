@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>学习空间 · 个性化学习系统</title>
+<style>
+:root{--bg:#f5f7fb;--card:#ffffff;--line:#e3e8ef;--text:#1f2937;--mut:#6b7280;--acc:#4f6ef2;--acc-soft:#eef1fe;--ok:#0f9d58;--ok-soft:#e6f6ee;--bad:#e5484d;--bad-soft:#fdeeee;--gold:#d97706;--gold-soft:#fdf1dd}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;font-size:14px;line-height:1.6}
+.wrap{max-width:1120px;margin:0 auto;padding:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.card-title{font-size:15px;font-weight:700;margin:0 0 10px;display:flex;align-items:center;gap:8px;justify-content:space-between;flex-wrap:wrap}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.mut{color:var(--mut);font-size:12px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;border:1px solid var(--line);background:var(--card);color:var(--text);border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;white-space:nowrap;user-select:none;font-family:inherit}
+.btn:hover{border-color:var(--acc);color:var(--acc)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-p{background:var(--acc);border-color:var(--acc);color:#fff}.btn-p:hover{color:#fff;opacity:.9}
+.btn-ok{background:var(--ok);border-color:var(--ok);color:#fff}.btn-ok:hover{color:#fff;opacity:.9}
+.btn-bad{background:var(--card);border-color:var(--bad);color:var(--bad)}.btn-bad:hover{background:var(--bad);color:#fff}
+.btn-sm{font-size:12px;padding:4px 9px}
+.chip{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600;background:var(--acc-soft);color:var(--acc)}
+.chip-gold{background:var(--gold-soft);color:var(--gold)}
+.chip-ok{background:var(--ok-soft);color:var(--ok)}
+.chip-bad{background:var(--bad-soft);color:var(--bad)}
+input[type=text],input[type=number],textarea,select{width:100%;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:13px;font-family:inherit;background:#fff;color:var(--text)}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--acc)}
+textarea{min-height:52px;resize:vertical}
+.nav{display:flex;gap:6px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.nav-item{font-size:13px;padding:5px 12px;border-radius:8px;border:1px solid transparent;cursor:pointer;color:var(--mut);background:none;font-family:inherit}
+.nav-item-on{background:var(--acc-soft);color:var(--acc);font-weight:700}
+.option{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:8px;padding:8px 12px;margin:6px 0;cursor:pointer;background:#fff}
+.option:hover{border-color:var(--acc)}
+.opt-key{flex:none;width:24px;height:24px;border-radius:50%;background:var(--acc-soft);color:var(--acc);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700}
+.option-sel{border-color:var(--acc);background:var(--acc-soft)}
+.option-ok{border-color:var(--ok);background:var(--ok-soft)}
+.option-bad{border-color:var(--bad);background:var(--bad-soft)}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden}
+.bar-in{height:100%;background:var(--acc);border-radius:99px}
+.bar-in-ok{background:var(--ok)}
+.bar-in-gold{background:var(--gold)}
+.hbar{width:100%;height:14px;background:var(--line);border-radius:99px;overflow:hidden}
+.hbar-in{height:100%;background:var(--acc);border-radius:99px}
+.week{display:flex;gap:6px;align-items:flex-end;height:96px;padding-top:6px}
+.week-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%;min-width:0}
+.week-bar{width:70%;min-height:3px;border-radius:4px 4px 0 0;background:var(--acc)}
+.week-day{font-size:11px;color:var(--mut);white-space:nowrap}
+.note{border-left:3px solid var(--acc);background:var(--acc-soft);padding:8px 12px;border-radius:0 8px 8px 0;font-size:13px;margin:10px 0}
+.fb{border-radius:10px;padding:10px 14px;margin:10px 0;border:1px solid;font-size:13px}
+.fb-ok{border-color:var(--ok);background:var(--ok-soft)}
+.fb-bad{border-color:var(--bad);background:var(--bad-soft)}
+.progress{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:12px;margin-bottom:10px}
+.tag{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;margin:3px 4px 3px 0;background:#fff;user-select:none}
+.tag-on{border-color:var(--acc);background:var(--acc-soft);color:var(--acc);font-weight:600}
+.empty{color:var(--mut);text-align:center;padding:26px 10px;font-size:13px}
+.timer-display{text-align:center;padding:14px 0 6px}
+.timer-time{font-size:46px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:2px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:#111827;color:#fff;padding:9px 18px;border-radius:999px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);z-index:99}
+.label-check{display:flex;gap:6px;align-items:center;font-size:13px;margin:4px 0;cursor:pointer}
+@media (prefers-color-scheme: dark){
+:root{--bg:#10141c;--card:#1a212c;--line:#2a3442;--text:#e5e9f0;--mut:#8b96a5;--acc:#6d8bff;--acc-soft:#202c4d;--ok:#2ecc71;--ok-soft:#13301f;--bad:#ff6b70;--bad-soft:#3a1a1d;--gold:#f0a63e;--gold-soft:#3a2c10}
+input,textarea,select,.option,.tag{background:#121826;color:var(--text)}
+.toast{background:#e5e9f0;color:#111827}
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'learnhub.store.v1';
+  var TYPE_NAMES = { single: '单选', judge: '判断', multi: '多选' };
+  var MODE_LABEL = { quiz: '测验', review: '错题回顾', timer: '计时', countdown: '倒计时' };
+  var TAG_CHOICES = ['太难', '太简单', '刚好合适', '题目有误', '收获很大', '想再练一次'];
+
+  /* ---------- 基础工具 ---------- */
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function dateKey(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+  function addDays(d, n) { return new Date(d.getFullYear(), d.getMonth(), d.getDate() + n); }
+  function genId(p) { return p + Date.now().toString(36) + Math.floor(Math.random() * 46656).toString(36); }
+  function esc(s) {
+    return String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmtLong(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var hh = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60), ss = sec % 60;
+    if (hh > 0) return hh + '小时' + (mm > 0 ? mm + '分' : '');
+    if (mm > 0) return mm + '分' + (ss > 0 ? ss + '秒' : '');
+    return ss + '秒';
+  }
+  function fmtHMS(sec) {
+    sec = Math.max(0, Math.floor(sec || 0));
+    var hh = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60), ss = sec % 60;
+    return pad2(hh) + ':' + pad2(mm) + ':' + pad2(ss);
+  }
+  function fmtClock(t) { var d = new Date(t); return pad2(d.getHours()) + ':' + pad2(d.getMinutes()); }
+  function fmtDate(t) { var d = new Date(t); return (d.getMonth() + 1) + '/' + d.getDate(); }
+  function levelOf(points) {
+    var level = 1, need = 100, remain = points || 0;
+    while (remain >= need) { remain -= need; level++; need = 100 + (level - 1) * 70; }
+    return { level: level, into: remain, need: need };
+  }
+  function emptyUser() {
+    return { name: '学习者', createdAt: Date.now(), points: 0, dailyGoalMin: 30, goals: [], checkIns: {}, mastery: {}, logs: [], streak: 0, streakLast: '' };
+  }
+  function sampleStore() {
+    return {
+      version: 1,
+      subjects: [{
+        id: 's_demo', name: '示例：公共基础知识', desc: '演示用科目，可删除后自建',
+        chapters: [
+          { id: 'c_demo1', name: '第一章 政治常识', questions: [
+            { id: 'q_demo1', type: 'single', stem: '我国的根本政治制度是？', options: [{ key: 'A', text: '人民代表大会制度' }, { key: 'B', text: '中国共产党领导的多党合作制度' }, { key: 'C', text: '民族区域自治制度' }, { key: 'D', text: '基层群众自治制度' }], answer: ['A'], analysis: '人民代表大会制度是我国的根本政治制度。' },
+            { id: 'q_demo2', type: 'judge', stem: '全国人民代表大会是最高国家权力机关。', options: [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }], answer: ['T'], analysis: '宪法规定全国人大是最高国家权力机关。' }
+          ] },
+          { id: 'c_demo2', name: '第二章 法律常识', questions: [
+            { id: 'q_demo3', type: 'single', stem: '我国现行宪法是哪一年颁布的？', options: [{ key: 'A', text: '1954年' }, { key: 'B', text: '1975年' }, { key: 'C', text: '1982年' }, { key: 'D', text: '1999年' }], answer: ['C'], analysis: '现行宪法是 1982 年颁布的（八二宪法）。' },
+            { id: 'q_demo4', type: 'judge', stem: '未满 18 周岁的公民没有选举权。', options: [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }], answer: ['F'], analysis: '年满 18 周岁、未被剥夺政治权利的中国公民享有选举权，因此表述绝对化，错误。' },
+            { id: 'q_demo5', type: 'multi', stem: '下列属于行政处罚的有？', options: [{ key: 'A', text: '警告' }, { key: 'B', text: '罚款' }, { key: 'C', text: '行政拘留' }, { key: 'D', text: '罚金' }], answer: ['A', 'B', 'C'], analysis: '罚金是刑罚（附加刑），不属于行政处罚。' }
+          ] }
+        ]
+      }],
+      users: { local: emptyUser() }
+    };
+  }
+
+  /* ---------- 存储 ---------- */
+  var persistOk = true;
+  function normalize(o) {
+    if (!o || typeof o !== 'object') return sampleStore();
+    if (!o.subjects) o.subjects = [];
+    if (!o.users) o.users = {};
+    if (!o.users.local) o.users.local = emptyUser();
+    return o;
+  }
+  function loadStore() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (!raw) return sampleStore();
+      return normalize(JSON.parse(raw));
+    } catch (e) { persistOk = false; return sampleStore(); }
+  }
+  function saveStore() {
+    if (!persistOk) return;
+    try { localStorage.setItem(KEY, JSON.stringify(store)); }
+    catch (e) { persistOk = false; toast('⚠️ 浏览器本地存储不可用，数据无法保存'); }
+  }
+  var store = loadStore();
+  var user = store.users.local;
+
+  /* ---------- 业务规则（与插件版一致） ---------- */
+  function masteryState(m) {
+    if (!m || !m.a) return { a: 0, c: 0, last: 0, streak: 0, wrong: false, mastered: false };
+    return { a: m.a, c: m.c, last: m.last, streak: m.streak, wrong: m.last === 0, mastered: m.last === 1 && m.streak >= 2 && m.a >= 2 };
+  }
+  function applyResult(m, ok) {
+    var cur = m || { a: 0, c: 0, last: 0, streak: 0 };
+    cur.a += 1;
+    if (ok) { cur.c += 1; cur.last = 1; cur.streak += 1; } else { cur.last = 0; cur.streak = 0; }
+    return cur;
+  }
+  function bumpStreak(u) {
+    var t = new Date(), tk = dateKey(t), yk = dateKey(addDays(t, -1));
+    if (!u.streakLast) { u.streak = 1; u.streakLast = tk; return; }
+    if (u.streakLast === tk) return;
+    if (u.streakLast === yk) { u.streak = (u.streak || 0) + 1; u.streakLast = tk; }
+    else { u.streak = 1; u.streakLast = tk; }
+  }
+  function touchToday(u) {
+    var tk = dateKey(new Date());
+    if (!u.checkIns[tk]) u.checkIns[tk] = { sec: 0, checkedIn: false, sessions: 0 };
+    return u.checkIns[tk];
+  }
+  function findSubj(id) { for (var i = 0; i < store.subjects.length; i++) if (store.subjects[i].id === id) return store.subjects[i]; return null; }
+  function findChap(s, id) { for (var i = 0; i < s.chapters.length; i++) if (s.chapters[i].id === id) return s.chapters[i]; return null; }
+  function subjectSummaries() {
+    return store.subjects.map(function (s) {
+      return {
+        id: s.id, name: s.name, desc: s.desc,
+        chapters: s.chapters.map(function (c) {
+          var wc = 0;
+          c.questions.forEach(function (q) { if (masteryState(user.mastery[q.id]).wrong) wc++; });
+          return { id: c.id, name: c.name, qCount: c.questions.length, wrongCount: wc };
+        })
+      };
+    });
+  }
+  function weekView() {
+    var arr = [], today = new Date();
+    for (var i = 6; i >= 0; i--) {
+      var d = addDays(today, -i), k = dateKey(d), e = user.checkIns[k];
+      arr.push({ date: k, label: (d.getMonth() + 1) + '/' + d.getDate(), sec: e ? e.sec : 0, checked: e && e.checkedIn ? 1 : 0 });
+    }
+    return arr;
+  }
+  function userView() {
+    var lv = levelOf(user.points), tk = dateKey(new Date());
+    var today = user.checkIns[tk] || { sec: 0, checkedIn: false };
+    var attemptTotal = 0, wrongTotal = 0, masteredTotal = 0;
+    Object.keys(user.mastery).forEach(function (k) {
+      var st = masteryState(user.mastery[k]);
+      attemptTotal += st.a;
+      if (st.wrong) wrongTotal++;
+      if (st.mastered) masteredTotal++;
+    });
+    var totalSec = user.logs.reduce(function (a, l) { return a + (l.seconds || 0); }, 0);
+    var recents = user.logs.slice().sort(function (a, b) { return b.at - a.at; }).slice(0, 8).map(function (l) {
+      return { at: l.at, subject: l.subjectName, chapter: l.chapterName, mode: l.mode, seconds: l.seconds, correct: l.correct, total: l.total, rating: l.rating };
+    });
+    var daily = [], tbase = new Date();
+    for (var i = 89; i >= 0; i--) {
+      var d = addDays(tbase, -i), k = dateKey(d), e = user.checkIns[k];
+      daily.push({ date: k, label: (d.getMonth() + 1) + '/' + d.getDate(), sec: e ? (e.sec || 0) : 0, sessions: e ? (e.sessions || 0) : 0 });
+    }
+    var sMap = {}, cMap = {}, hours = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];
+    user.logs.forEach(function (l) {
+      var sec = l.seconds || 0, hr = new Date(l.at).getHours();
+      hours[hr] += sec;
+      var sid = l.subjectId || '?';
+      if (!sMap[sid]) sMap[sid] = { id: sid, name: l.subjectName || '未知科目', seconds: 0, sessions: 0 };
+      sMap[sid].seconds += sec; sMap[sid].sessions += 1;
+      var ck = sid + '::' + (l.chapterId || '?');
+      if (!cMap[ck]) cMap[ck] = { chapter: l.chapterName || '未知章节', seconds: 0, sessions: 0 };
+      cMap[ck].seconds += sec; cMap[ck].sessions += 1;
+    });
+    var subj = Object.keys(sMap).map(function (k) { return sMap[k]; }).sort(function (a, b) { return b.seconds - a.seconds; });
+    var chap = Object.keys(cMap).map(function (k) { return cMap[k]; }).sort(function (a, b) { return b.seconds - a.seconds; }).slice(0, 12);
+    return {
+      name: user.name, points: user.points, level: lv.level, levelInto: lv.into, levelNeed: lv.need,
+      streak: user.streak || 0, checkedToday: !!today.checkedIn, todaySec: today.sec,
+      week: weekView(), goalMin: user.dailyGoalMin || 30, goals: user.goals || [],
+      attemptTotal: attemptTotal, wrongTotal: wrongTotal, masteredTotal: masteredTotal,
+      sessionTotal: user.logs.length, totalSec: totalSec, recents: recents,
+      daily: daily, subj: subj, chap: chap, hours: hours
+    };
+  }
+  function chapterFull(c) {
+    return {
+      id: c.id, name: c.name, qCount: c.questions.length,
+      questions: c.questions.map(function (q) {
+        var st = masteryState(user.mastery[q.id]);
+        return { id: q.id, type: q.type, stem: q.stem, options: q.options, answer: q.answer, analysis: q.analysis,
+          a: st.a, c: st.c, wrong: st.wrong, mastered: st.mastered };
+      })
+    };
+  }
+
+  /* ---------- 界面状态 ---------- */
+  function newTimer() {
+    return { mode: 'stop', status: 'idle', elapsed: 0, cdMin: '25', cdSec: 1500, remain: 1500, subjId: '', chapId: '', note: '', tick: null };
+  }
+  var ui = {
+    page: 'home', learnSel: null, quiz: null, timer: newTimer(),
+    manage: { page: 'list', subjectId: null, chapterId: null, form: null },
+    statsDays: 30, toast: null, toastTimer: null
+  };
+  function toast(msg) {
+    ui.toast = msg;
+    if (ui.toastTimer) clearTimeout(ui.toastTimer);
+    ui.toastTimer = setTimeout(function () { ui.toast = null; render(); }, 2600);
+    render();
+  }
+  function val(id) { var el = document.getElementById(id); return el ? el.value : ''; }
+  function num(id, d) { var v = parseFloat(val(id)); return isNaN(v) ? d : v; }
+
+  /* ---------- 动作 ---------- */
+  var ACT = {};
+  ACT.nav = function (p) { ui.page = p; if (p !== 'learn') ui.learnSel = null; render(); };
+  ACT.openLearnSubject = function (id) { ui.learnSel = id; render(); };
+  ACT.learnBack = function () { ui.learnSel = null; render(); };
+  ACT.checkin = function () {
+    if (user.checkIns[dateKey(new Date())] && user.checkIns[dateKey(new Date())].checkedIn) return;
+    var e = touchToday(user);
+    e.checkedIn = true; user.points += 15;
+    bumpStreak(user); saveStore(); toast('✅ 打卡成功，+15 积分'); render();
+  };
+  ACT.setGoalMin = function () {
+    user.dailyGoalMin = Math.max(5, Math.min(600, Math.round(num('goal-min', 30))));
+    saveStore(); render(); toast('每日目标已更新');
+  };
+  ACT.addGoal = function () {
+    var t = (val('goal-new') || '').trim(); if (!t) return;
+    user.goals.push({ id: genId('g'), text: t, done: false }); saveStore(); render();
+  };
+  ACT.toggleGoal = function (id) {
+    user.goals = (user.goals || []).map(function (g) { if (g.id === id) g.done = !g.done; return g; });
+    saveStore(); render();
+  };
+  ACT.delGoal = function (id) {
+    user.goals = (user.goals || []).filter(function (g) { return g.id !== id; });
+    saveStore(); render();
+  };
+  ACT.resetProgress = function () {
+    if (!confirm('确定清空全部学习进度（积分/错题/时长/目标）？题库会保留。')) return;
+    user.points = 0; user.mastery = {}; user.logs = []; user.checkIns = {}; user.goals = []; user.streak = 0; user.streakLast = '';
+    saveStore(); render(); toast('学习进度已清空');
+  };
+  ACT.exportData = function () {
+    var blob = new Blob([JSON.stringify(store, null, 2)], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '学习空间备份-' + dateKey(new Date()) + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    toast('已导出备份文件');
+  };
+  ACT.importData = function () { var f = document.getElementById('import-file'); if (f) f.click(); };
+
+  /* 题库管理 */
+  ACT.addSubject = function () {
+    var n = (val('subj-name') || '').trim(); if (!n) return;
+    store.subjects.push({ id: genId('s'), name: n, desc: (val('subj-desc') || '').trim(), chapters: [] });
+    saveStore(); render(); toast('科目已创建');
+  };
+  ACT.renameSubject = function (id) {
+    var s = findSubj(id); if (!s) return;
+    var n = prompt('修改科目名称', s.name); if (n === null) return;
+    s.name = n.trim() || s.name;
+    var d = prompt('修改说明（可留空）', s.desc || ''); if (d !== null) s.desc = d.trim();
+    saveStore(); render();
+  };
+  ACT.delSubject = function (id) {
+    var s = findSubj(id); if (!s) return;
+    if (!confirm('确定删除科目「' + s.name + '」及其全部章节题目？')) return;
+    store.subjects = store.subjects.filter(function (x) { return x.id !== id; });
+    saveStore(); render();
+  };
+  ACT.openSubject = function (id) { ui.manage = { page: 'subject', subjectId: id, chapterId: null, form: null }; render(); };
+  ACT.manageBack = function () { ui.manage = { page: 'list', subjectId: null, chapterId: null, form: null }; render(); };
+  ACT.addChapter = function () {
+    var s = findSubj(ui.manage.subjectId); if (!s) return;
+    var n = (val('chap-name') || '').trim(); if (!n) return;
+    s.chapters.push({ id: genId('c'), name: n, questions: [] });
+    saveStore(); render(); toast('章节已添加');
+  };
+  ACT.renameChapter = function (id) {
+    var s = findSubj(ui.manage.subjectId); var c = s && findChap(s, id); if (!c) return;
+    var n = prompt('修改章节名称', c.name); if (n === null) return;
+    c.name = n.trim() || c.name; saveStore(); render();
+  };
+  ACT.delChapter = function (id) {
+    var s = findSubj(ui.manage.subjectId); if (!s) return;
+    var c = findChap(s, id); if (!c) return;
+    if (!confirm('确定删除章节「' + c.name + '」及其全部题目？')) return;
+    s.chapters = s.chapters.filter(function (x) { return x.id !== id; });
+    saveStore(); render();
+  };
+  ACT.openChapter = function (id) { ui.manage.page = 'chapter'; ui.manage.chapterId = id; ui.manage.form = null; render(); };
+  ACT.chapterBack = function () { ui.manage.page = 'subject'; ui.manage.chapterId = null; ui.manage.form = null; render(); };
+  ACT.qAdd = function () {
+    ui.manage.form = { id: null, type: 'single', stem: '', options: [{ key: 'A', text: '' }, { key: 'B', text: '' }], ansKeys: [], analysis: '' };
+    render();
+  };
+  ACT.qEdit = function (qid) {
+    var s = findSubj(ui.manage.subjectId), c = s && findChap(s, ui.manage.chapterId);
+    var q = c && c.questions.filter(function (x) { return x.id === qid; })[0];
+    if (!q) return;
+    ui.manage.form = { id: q.id, type: q.type, stem: q.stem, options: q.options.map(function (o) { return { key: o.key, text: o.text }; }), ansKeys: q.answer.slice(), analysis: q.analysis || '' };
+    render();
+  };
+  ACT.qCancel = function () { ui.manage.form = null; render(); };
+  ACT.qType = function (t) {
+    captureForm();
+    var f = ui.manage.form;
+    f.type = t;
+    if (t === 'judge') f.options = [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }];
+    else if (f.options.length === 0 || f.options[0].key === 'T') f.options = [{ key: 'A', text: '' }, { key: 'B', text: '' }];
+    f.ansKeys = [];
+    render();
+  };
+  ACT.qAddOpt = function () {
+    captureForm();
+    var f = ui.manage.form;
+    if (f.options.length >= 8) return;
+    f.options.push({ key: String.fromCharCode(65 + f.options.length), text: '' });
+    render();
+  };
+  ACT.qDelOpt = function () {
+    captureForm();
+    var f = ui.manage.form;
+    if (f.options.length <= 2) return;
+    var removed = f.options.pop();
+    f.ansKeys = f.ansKeys.filter(function (k) { return k !== removed.key; });
+    render();
+  };
+  ACT.qAns = function (key) {
+    captureForm();
+    var f = ui.manage.form;
+    if (f.type === 'multi') {
+      f.ansKeys = f.ansKeys.indexOf(key) >= 0 ? f.ansKeys.filter(function (x) { return x !== key; }) : f.ansKeys.concat([key]);
+    } else { f.ansKeys = [key]; }
+    render();
+  };
+  ACT.qSave = function () {
+    captureForm();
+    var f = ui.manage.form;
+    var s = findSubj(ui.manage.subjectId), c = s && findChap(s, ui.manage.chapterId);
+    if (!c) return;
+    if (!f.stem.trim()) { toast('请填写题干'); return; }
+    if (!f.ansKeys.length) { toast('请勾选正确答案'); return; }
+    var options = f.options.map(function (o) { return { key: o.key, text: (o.text || '').trim() }; });
+    if (f.type === 'judge') options = [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }];
+    if (f.type !== 'judge' && options.some(function (o) { return !o.text; })) { toast('选项内容不能为空'); return; }
+    var q = { id: f.id || genId('q'), type: f.type, stem: f.stem.trim(), options: options, answer: f.ansKeys.slice(), analysis: (f.analysis || '').trim() };
+    if (f.id) {
+      var i = c.questions.map(function (x) { return x.id; }).indexOf(f.id);
+      if (i >= 0) c.questions[i] = q;
+    } else { c.questions.push(q); }
+    ui.manage.form = null; saveStore(); render(); toast('题目已保存');
+  };
+  ACT.qDel = function (qid) {
+    var s = findSubj(ui.manage.subjectId), c = s && findChap(s, ui.manage.chapterId);
+    if (!c) return;
+    if (!confirm('删除这道题？')) return;
+    c.questions = c.questions.filter(function (q) { return q.id !== qid; });
+    saveStore(); render();
+  };
+  function captureForm() {
+    var f = ui.manage.form; if (!f) return;
+    f.stem = val('q-stem');
+    f.analysis = val('q-analysis');
+    for (var i = 0; i < f.options.length; i++) {
+      var el = document.getElementById('q-opt-' + i);
+      if (el) f.options[i].text = el.value;
+    }
+  }
+
+  /* 学习：测验 / 错题回顾 */
+  ACT.startQuiz = function (subjectId, chapterId, mode) {
+    var s = findSubj(subjectId), c = s && findChap(s, chapterId);
+    if (!c) return;
+    var qs = c.questions.slice();
+    if (mode === 'review') qs = qs.filter(function (q) { return masteryState(user.mastery[q.id]).wrong; });
+    else qs = qs.slice().sort(function () { return Math.random() - 0.5; });
+    if (!qs.length) { toast(mode === 'review' ? '没有待复习的错题' : '本章还没有题目'); return; }
+    ui.quiz = {
+      subjectId: subjectId, chapterId: chapterId, subjectName: s.name, chapterName: c.name,
+      mode: mode, qs: qs, idx: 0, chosen: [], answered: false, ok: false, results: [],
+      status: 'run', rating: 0, tags: [], startAt: Date.now()
+    };
+    render();
+  };
+  ACT.qOpt = function (key) {
+    var q = ui.quiz; if (!q || q.answered) return;
+    var cur = q.qs[q.idx];
+    if (cur.type === 'multi') {
+      q.chosen = q.chosen.indexOf(key) >= 0 ? q.chosen.filter(function (x) { return x !== key; }) : q.chosen.concat([key]);
+    } else { q.chosen = [key]; }
+    render();
+  };
+  ACT.qSubmit = function () {
+    var q = ui.quiz; if (!q || q.answered || !q.chosen.length) return;
+    var cur = q.qs[q.idx];
+    var ok = cur.answer.slice().sort().join('|') === q.chosen.slice().sort().join('|');
+    q.results.push({ qid: cur.id, ok: ok });
+    q.ok = ok; q.answered = true;
+    render();
+  };
+  ACT.qNext = function () {
+    var q = ui.quiz; if (!q) return;
+    if (q.idx + 1 >= q.qs.length) { q.status = 'summary'; render(); return; }
+    q.idx += 1; q.chosen = []; q.answered = false; q.ok = false;
+    render();
+  };
+  ACT.qExit = function () { ui.quiz = null; render(); };
+  ACT.qRate = function (n) { if (ui.quiz) { ui.quiz.rating = n; render(); } };
+  ACT.qTag = function (t) {
+    var q = ui.quiz; if (!q) return;
+    q.tags = q.tags.indexOf(t) >= 0 ? q.tags.filter(function (x) { return x !== t; }) : q.tags.concat([t]);
+    render();
+  };
+  ACT.qSaveSession = function () {
+    var q = ui.quiz; if (!q || q.rating === 0) return;
+    var s = findSubj(q.subjectId), c = s && findChap(s, q.chapterId);
+    if (!c) { toast('章节已不存在'); return; }
+    var correct = 0, pts = 0;
+    q.results.forEach(function (r) {
+      user.mastery[r.qid] = applyResult(user.mastery[r.qid], r.ok);
+      if (r.ok) { correct++; pts += q.mode === 'review' ? 6 : 10; }
+    });
+    if (q.results.length) pts += 5;
+    user.points += pts;
+    var seconds = Math.max(0, Math.round((Date.now() - q.startAt) / 1000));
+    var e = touchToday(user);
+    e.sec += seconds; e.sessions += 1;
+    bumpStreak(user);
+    user.logs.push({
+      id: genId('log'), at: Date.now(), date: dateKey(new Date()), subjectId: s.id, subjectName: s.name,
+      chapterId: c.id, chapterName: c.name, mode: q.mode, seconds: seconds, correct: correct,
+      total: q.results.length, rating: q.rating, tags: q.tags.slice(), comment: (val('q-comment') || '').trim()
+    });
+    saveStore();
+    q.status = 'saved'; q.pts = pts;
+    render(); toast('已保存，+' + pts + ' 积分');
+  };
+
+  /* 计时 */
+  ACT.timerMode = function (m) {
+    var t = ui.timer;
+    if (t.status === 'running' || t.status === 'finished') return;
+    t.mode = m; t.status = 'idle';
+    if (m === 'cd') t.remain = t.cdSec; else { t.elapsed = 0; t.remain = 0; }
+    render();
+  };
+  ACT.timerPreset = function (m) {
+    var t = ui.timer;
+    t.cdMin = String(m); t.cdSec = m * 60;
+    if (t.status === 'idle') t.remain = t.cdSec;
+    render();
+  };
+  ACT.timerCustom = function () {
+    var t = ui.timer;
+    var m = Math.max(1, Math.min(600, Math.round(num('cd-min', 25))));
+    t.cdMin = String(m); t.cdSec = m * 60;
+    if (t.status === 'idle') t.remain = t.cdSec;
+    render();
+  };
+  ACT.timerStart = function () {
+    var t = ui.timer;
+    if (t.status === 'running') return;
+    t.elapsed = 0;
+    if (t.mode === 'cd') t.remain = t.cdSec;
+    t.status = 'running';
+    startTick(); render();
+  };
+  ACT.timerPause = function () { if (ui.timer.status === 'running') { ui.timer.status = 'paused'; stopTick(); render(); } };
+  ACT.timerResume = function () { if (ui.timer.status === 'paused') { ui.timer.status = 'running'; startTick(); render(); } };
+  ACT.timerReset = function () { stopTick(); ui.timer = newTimer(); render(); };
+  ACT.timerFinish = function () {
+    var t = ui.timer;
+    var sec = t.mode === 'stop' ? t.elapsed : Math.max(0, t.cdSec - t.remain);
+    stopTick();
+    if (sec < 1) { t.status = 'idle'; toast('时长不足，未记录'); render(); return; }
+    var s = t.subjId ? findSubj(t.subjId) : null;
+    var c = s && t.chapId ? findChap(s, t.chapId) : null;
+    var e = touchToday(user);
+    e.sec += sec; e.sessions += 1;
+    bumpStreak(user);
+    user.logs.push({
+      id: genId('log'), at: Date.now(), date: dateKey(new Date()),
+      subjectId: s ? s.id : '', subjectName: s ? s.name : '自由学习',
+      chapterId: c ? c.id : '', chapterName: c ? c.name : '自由学习',
+      mode: t.mode === 'cd' ? 'countdown' : 'timer', seconds: sec, correct: 0, total: 0,
+      rating: 0, tags: [], comment: (t.note || '').trim()
+    });
+    saveStore();
+    var label = fmtLong(sec);
+    ui.timer = newTimer();
+    render();
+    toast('✅ 已计入学习时长 ' + label + (s ? '' : '（自由学习）'));
+  };
+  function startTick() {
+    stopTick();
+    ui.timer.tick = setInterval(function () {
+      var t = ui.timer;
+      if (t.status !== 'running') return;
+      if (t.mode === 'stop') t.elapsed += 1;
+      else {
+        t.remain -= 1;
+        if (t.remain <= 0) {
+          t.remain = 0; t.status = 'finished'; stopTick();
+          render(); toast('⏰ 时间到！点「记录本次」计入统计');
+          return;
+        }
+      }
+      var d = document.getElementById('timer-time');
+      if (d) d.textContent = fmtHMS(t.mode === 'stop' ? t.elapsed : t.remain);
+    }, 1000);
+  }
+  function stopTick() { if (ui.timer.tick) { clearInterval(ui.timer.tick); ui.timer.tick = null; } }
+
+  /* 统计范围 */
+  ACT.statsDays = function (n) { ui.statsDays = n; render(); };
+
+  /* 导入 */
+  function onImportFile(input) {
+    var f = input.files && input.files[0]; if (!f) return;
+    var r = new FileReader();
+    r.onload = function () {
+      try {
+        var obj = normalize(JSON.parse(String(r.result)));
+        store = obj; user = store.users.local;
+        saveStore(); render(); toast('✅ 数据导入成功');
+      } catch (e) { toast('❌ 文件格式不正确'); }
+    };
+    r.readAsText(f);
+    input.value = '';
+  }
+
+  /* ---------- 渲染 ---------- */
+  function chip(text, kind) { return '<span class="chip' + (kind ? ' chip-' + kind : '') + '">' + esc(text) + '</span>'; }
+  function btn(label, act, arg, kind, cls, extra) {
+    return '<button class="btn' + (kind ? ' btn-' + kind : '') + (cls ? ' ' + cls : '') + '" data-act="' + act + '"' +
+      (arg !== undefined && arg !== null ? ' data-arg="' + esc(arg) + '"' : '') + (extra || '') + '>' + label + '</button>';
+  }
+  function header(v) {
+    return '<div class="nav">' +
+      '<button class="nav-item' + (ui.page === 'home' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="home">🏠 首页</button>' +
+      '<button class="nav-item' + (ui.page === 'learn' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="learn">📚 学习</button>' +
+      '<button class="nav-item' + (ui.page === 'timer' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="timer">⏲ 计时学习</button>' +
+      '<button class="nav-item' + (ui.page === 'stats' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="stats">⏱ 时间统计</button>' +
+      '<button class="nav-item' + (ui.page === 'manage' ? ' nav-item-on' : '') + '" data-act="nav" data-arg="manage">✏️ 管理题库</button>' +
+      '<span class="grow"></span>' +
+      chip('⚡' + v.points + ' 积分', 'gold') + chip('Lv.' + v.level) + chip('🔥 连胜 ' + v.streak + ' 天', 'ok') +
+      chip('📈 掌握 ' + v.masteredTotal + ' / 错题 ' + v.wrongTotal) +
+      '</div>';
+  }
+  function pageHome(v) {
+    var todayMin = Math.round(v.todaySec / 60);
+    var goalPct = Math.min(100, Math.round((todayMin / v.goalMin) * 100));
+    var maxSec = Math.max.apply(null, v.week.map(function (w) { return w.sec; }).concat([1]));
+    var weak = [];
+    store.subjects.forEach(function (s) {
+      s.chapters.forEach(function (c) {
+        var wc = 0;
+        c.questions.forEach(function (q) { if (masteryState(user.mastery[q.id]).wrong) wc++; });
+        if (wc > 0) weak.push({ s: s, c: c, w: wc });
+      });
+    });
+    weak.sort(function (a, b) { return b.w - a.w; });
+    var html = '<div class="card">' +
+      '<div class="row"><div class="grow">' +
+      '<div style="font-size:17px;font-weight:800">你好，' + esc(v.name) + ' 👋</div>' +
+      '<div class="mut">今日已学 ' + todayMin + ' / ' + v.goalMin + ' 分钟 · 累计 ' + fmtLong(v.totalSec) + '</div>' +
+      '<div class="row" style="margin-top:6px">' + chip('Lv.' + v.level) + chip(v.points + ' 积分', 'gold') + chip('🔥' + v.streak + ' 天', 'ok') + '</div>' +
+      '</div>' + btn(v.checkedToday ? '✅ 今日已打卡' : '📌 今日打卡 +15', 'checkin', null, 'p', null, v.checkedToday ? ' disabled' : '') + '</div>' +
+      '<div class="note">距下一级还差 ' + (v.levelNeed - v.levelInto) + ' 分 · 掌握 ' + v.masteredTotal + ' 题 · 待复习错题 ' + v.wrongTotal + ' 题 · 累计作答 ' + v.attemptTotal + ' 题 · ' + v.sessionTotal + ' 次学习</div>' +
+      '<div class="bar"><div class="bar-in' + (goalPct >= 100 ? ' bar-in-ok' : '') + '" style="width:' + Math.max(goalPct, 2) + '%"></div></div>' +
+      '<div class="mut" style="margin-top:4px">今日目标进度 ' + goalPct + '%</div>' +
+      '</div>';
+    html += '<div class="row">';
+    html += '<div style="flex:1.2;min-width:270px">';
+    html += '<div class="card"><div class="card-title"><span>近 7 日学习时长</span><span class="row"><input id="goal-min" type="number" min="5" max="600" value="' + v.goalMin + '" style="width:88px" title="每日目标（分钟）">' + btn('保存目标', 'setGoalMin', null, 'p', 'btn-sm') + '</span></div>' +
+      '<div class="week">' + v.week.map(function (w) {
+        var pct = Math.max(6, Math.round((w.sec / maxSec) * 100));
+        return '<div class="week-col" title="' + w.date + ' · ' + fmtLong(w.sec) + '"><div class="week-bar' + (w.checked ? ' bar-in-gold' : '') + '" style="height:' + pct + '%;background:' + (w.checked ? 'var(--gold)' : 'var(--acc)') + '"></div><div class="week-day">' + w.label + '</div></div>';
+      }).join('') + '</div></div>';
+    html += '<div class="card"><div class="card-title"><span>我的目标</span>' + btn('+ 添加', 'addGoal', null, 'ok', 'btn-sm') + '</div>' +
+      '<input id="goal-new" type="text" placeholder="写下目标，如：本周完成民法测验">' +
+      (v.goals.length === 0 ? '<div class="empty">暂无目标，给自己定一个吧</div>' :
+        v.goals.map(function (g) {
+          return '<div class="row" style="margin-top:8px"><label class="label-check grow"><input type="checkbox" data-act="toggleGoal" data-arg="' + g.id + '"' + (g.done ? ' checked' : '') + '><span' + (g.done ? ' style="text-decoration:line-through;color:var(--mut)"' : '') + '>' + esc(g.text) + '</span></label>' + btn('删除', 'delGoal', g.id, null, 'btn-sm') + '</div>';
+        }).join('')) + '</div>';
+    html += '</div>';
+    html += '<div style="flex:1;min-width:250px">';
+    html += '<div class="card"><div class="card-title"><span>🎯 薄弱点推荐</span><span class="mut">' + weak.length + ' 处待攻</span></div>' +
+      (weak.length === 0 ? '<div class="empty">' + (store.subjects.length === 0 ? '先去「管理题库」添加科目和题目吧' : '太棒了，当前没有错题！') + '</div>' :
+        weak.slice(0, 5).map(function (it, i) {
+          return '<div class="row" style="margin-top:6px">' + chip(String(i + 1), 'bad') + '<span class="grow" style="font-size:13px">' + esc(it.s.name + ' / ' + it.c.name) + '</span>' + chip(it.w + ' 错', 'bad') + btn('去复习', 'startQuiz', it.s.id + '|' + it.c.id + '|review', 'bad', 'btn-sm') + '</div>';
+        }).join('')) + '</div>';
+    html += '<div class="card"><div class="card-title"><span>最近学习</span><span class="mut">' + v.sessionTotal + ' 次</span></div>' +
+      (v.recents.length === 0 ? '<div class="empty">还没有学习记录</div>' :
+        v.recents.map(function (l) {
+          return '<div class="row" style="margin-top:6px"><span class="mut">' + fmtDate(l.at) + '</span><span class="grow" style="font-size:13px">' + esc(l.subject + ' / ' + l.chapter) + '</span>' + chip(MODE_LABEL[l.mode] || l.mode, l.mode === 'review' ? 'gold' : 'ok') + '<span class="mut">' + fmtLong(l.seconds) + '</span></div>';
+        }).join('')) + '</div>';
+    html += '<div class="card"><div class="row"><span class="grow" style="font-size:13px">数据备份</span>' + btn('导出备份', 'exportData', null, null, 'btn-sm') + btn('导入数据', 'importData', null, null, 'btn-sm') + btn('重置进度', 'resetProgress', null, 'bad', 'btn-sm') + '</div>' +
+      (persistOk ? '' : '<div class="mut" style="margin-top:6px;color:var(--bad)">⚠️ 当前浏览器不支持本地存储，数据不会自动保存，请用导出备份。</div>') + '</div>';
+    html += '</div></div>';
+    return html;
+  }
+  function pageLearn() {
+    var html = '';
+    if (!ui.learnSel) {
+      if (store.subjects.length === 0) return '<div class="card"><div class="empty">还没有科目，去「✏️ 管理题库」创建第一个科目吧</div></div>';
+      return store.subjects.map(function (s) {
+        var totalQ = 0, totalW = 0;
+        s.chapters.forEach(function (c) {
+          totalQ += c.questions.length;
+          c.questions.forEach(function (q) { if (masteryState(user.mastery[q.id]).wrong) totalW++; });
+        });
+        return '<div class="card"><div class="row"><span class="grow"><div style="font-weight:700;font-size:15px">' + esc(s.name) + '</div><div class="mut">' + esc(s.desc || '未填写说明') + '</div></span>' + chip(totalQ + ' 题') + chip(totalW > 0 ? totalW + ' 错题' : '无错题', totalW > 0 ? 'bad' : 'ok') + btn('开始学习', 'openLearnSubject', s.id, 'p') + '</div></div>';
+      }).join('');
+    }
+    var s = findSubj(ui.learnSel);
+    if (!s) { ui.learnSel = null; return pageLearn(); }
+    html += '<div class="row" style="margin-bottom:10px">' + btn('← 返回科目列表', 'learnBack') + '<span style="font-weight:800;font-size:16px">' + esc(s.name) + '</span></div>';
+    if (s.chapters.length === 0) return html + '<div class="card"><div class="empty">这个科目还没有章节</div></div>';
+    return html + s.chapters.map(function (c) {
+      var wc = 0;
+      c.questions.forEach(function (q) { if (masteryState(user.mastery[q.id]).wrong) wc++; });
+      return '<div class="card"><div class="row"><div class="grow"><div style="font-weight:700">' + esc(c.name) + '</div><div class="mut">' + c.questions.length + ' 道题' + (wc ? ' · ' + wc + ' 道错题待复习' : '') + '</div></div>' +
+        (wc > 0 ? chip(wc + ' 错', 'bad') : chip('✓', 'ok')) +
+        btn('错题回顾', 'startQuiz', s.id + '|' + c.id + '|review', 'bad', null, wc === 0 ? ' disabled' : '') +
+        btn('章节测验', 'startQuiz', s.id + '|' + c.id + '|quiz', 'p', null, c.questions.length === 0 ? ' disabled' : '') +
+        '</div></div>';
+    }).join('');
+  }
+  function pageQuiz() {
+    var q = ui.quiz;
+    if (q.status === 'summary' || q.status === 'saved') {
+      var okN = q.results.filter(function (r) { return r.ok; }).length;
+      var total = q.results.length;
+      var acc = total ? Math.round((okN / total) * 100) : 0;
+      var html = '<div class="card"><div style="font-size:16px;font-weight:800">本场' + (q.mode === 'review' ? '错题回顾' : '测验') + '完成 🎉</div>' +
+        '<div class="row" style="margin-top:8px">' + chip('答对 ' + okN + ' / ' + total, 'ok') + chip('正确率 ' + acc + '%', 'gold') + chip('用时 ' + fmtLong(Math.round((Date.now() - q.startAt) / 1000))) + '</div>';
+      if (q.status === 'summary') {
+        html += '<div style="margin-top:12px;font-weight:700">自我评价（反馈循环）</div><div class="row" style="margin-top:6px">' +
+          [1, 2, 3, 4, 5].map(function (n) { return btn(n + ' 星', 'qRate', n, q.rating === n ? 'ok' : null, 'btn-sm'); }).join('') + '</div>' +
+          '<div class="mut" style="margin-top:4px">1 星 = 完全没掌握，5 星 = 掌握得很好</div>' +
+          '<div style="margin-top:10px;font-weight:700">这组题目对你来说</div>' +
+          TAG_CHOICES.map(function (t) { return '<span class="tag' + (q.tags.indexOf(t) >= 0 ? ' tag-on' : '') + '" data-act="qTag" data-arg="' + esc(t) + '">' + esc(t) + '</span>'; }).join('') +
+          '<textarea id="q-comment" placeholder="补充想说的（可选）" style="margin-top:10px"></textarea>' +
+          '<div class="row" style="margin-top:10px">' + btn('保存并领取积分', 'qSaveSession', null, 'p', null, q.rating === 0 ? ' disabled' : '') + btn('不保存，直接返回', 'qExit') + '</div>';
+      } else {
+        html += '<div class="row" style="margin-top:10px">' + chip('+' + q.pts + ' 积分已发放', 'gold') + btn('返回', 'qExit', null, 'p') + '</div>';
+      }
+      return html + '</div>';
+    }
+    var cur = q.qs[q.idx];
+    var pct = Math.round(((q.idx + (q.answered ? 1 : 0)) / q.qs.length) * 100);
+    var html = '<div class="card">' +
+      '<div class="progress">' + btn('✕ 退出', 'qExit', null, null, 'btn-sm') + '<span class="grow"></span><span>第 ' + (q.idx + 1) + ' / ' + q.qs.length + ' 题</span><span>' + pct + '%</span></div>' +
+      '<div class="bar"><div class="bar-in" style="width:' + pct + '%"></div></div>' +
+      '<div class="mut" style="margin-top:8px">' + esc(q.subjectName + ' / ' + q.chapterName + ' · ' + (q.mode === 'review' ? '错题回顾' : '章节测验')) + '</div>' +
+      '<div style="margin-top:10px">' + chip(TYPE_NAMES[cur.type] || cur.type, 'gold') + '</div>' +
+      '<div style="font-weight:700;margin:8px 0">' + esc(cur.stem) + '</div>';
+    html += cur.options.map(function (o) {
+      var cls = 'option';
+      var sel = q.chosen.indexOf(o.key) >= 0;
+      if (sel) cls += ' option-sel';
+      if (q.answered) { if (cur.answer.indexOf(o.key) >= 0) cls += ' option-ok'; else if (sel) cls += ' option-bad'; }
+      return '<div class="' + cls + '" data-act="qOpt" data-arg="' + esc(o.key) + '"><span class="opt-key">' + esc(o.key) + '</span><span>' + esc(o.text) + '</span></div>';
+    }).join('');
+    if (q.answered) {
+      html += '<div class="fb ' + (q.ok ? 'fb-ok' : 'fb-bad') + '">' + (q.ok ? '✅ 回答正确！' : '❌ 回答错误') + '</div>';
+      if (cur.analysis) html += '<div style="font-size:13px"><b>解析：</b>' + esc(cur.analysis) + '</div>';
+      html += '<div class="row" style="margin-top:10px"><span class="grow"></span>' + btn(q.idx + 1 >= q.qs.length ? '查看总结 →' : '下一题 →', 'qNext', null, 'p') + '</div>';
+    } else {
+      html += '<div class="row" style="margin-top:10px"><span class="grow"></span>' + btn('提交答案', 'qSubmit', null, 'p', null, q.chosen.length === 0 ? ' disabled' : '') + '</div>';
+    }
+    return html + '</div>';
+  }
+  function pageTimer() {
+    var t = ui.timer;
+    var busy = t.status === 'running' || t.status === 'paused';
+    var show = t.mode === 'stop' ? t.elapsed : t.remain;
+    var stateText = t.status === 'running' ? (t.mode === 'cd' ? '专注倒计时中…' : '学习中，加油！') : t.status === 'paused' ? '已暂停' : t.status === 'finished' ? '⏰ 时间到！' : '准备就绪';
+    var s = t.subjId ? findSubj(t.subjId) : null;
+    var chapters = s ? s.chapters : [];
+    var html = '<div class="card">' +
+      '<div class="row"><span class="mut">计时模式</span>' +
+      btn('⏱ 正计时', 'timerMode', 'stop', t.mode === 'stop' ? 'p' : null, null, busy || t.status === 'finished' ? ' disabled' : '') +
+      btn('⏳ 倒计时', 'timerMode', 'cd', t.mode === 'cd' ? 'p' : null, null, busy || t.status === 'finished' ? ' disabled' : '') +
+      '<span class="grow"></span>' + chip(stateText, t.status === 'running' ? 'ok' : 'gold') + '</div>' +
+      '<div class="timer-display"><div class="timer-time" id="timer-time" style="color:' + (t.status === 'running' ? 'var(--acc)' : 'var(--text)') + '">' + fmtHMS(show) + '</div>' +
+      '<div class="mut">' + (t.status === 'finished' ? '本次专注 ' + fmtLong(t.cdSec) : '学习将计入今日时长统计') + '</div></div>';
+    if (t.mode === 'cd' && t.status === 'idle') {
+      html += '<div class="row" style="justify-content:center;margin:6px 0">' +
+        [15, 25, 45, 60].map(function (m) { return btn(m + ' 分钟', 'timerPreset', m, t.cdSec === m * 60 ? 'p' : null, 'btn-sm'); }).join('') +
+        '<input id="cd-min" type="number" min="1" max="600" value="' + esc(t.cdMin) + '" style="width:88px">' + btn('设定', 'timerCustom', null, null, 'btn-sm') + '<span class="mut">分钟</span></div>';
+    }
+    html += '<div class="row" style="margin-top:8px">' +
+      '<select id="t-subj" data-act="timerSubj" style="flex:1;min-width:180px;max-width:260px"' + (busy ? ' disabled' : '') + '><option value="">📁 自由学习（不选科目）</option>' +
+      store.subjects.map(function (x) { return '<option value="' + x.id + '"' + (x.id === t.subjId ? ' selected' : '') + '>' + esc(x.name) + '</option>'; }).join('') + '</select>' +
+      '<select id="t-chap" style="flex:1;min-width:160px;max-width:240px"' + (busy || !s ? ' disabled' : '') + '><option value="">📂 整章自由学（不限章节）</option>' +
+      chapters.map(function (c) { return '<option value="' + c.id + '"' + (c.id === t.chapId ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' +
+      '<input id="t-note" type="text" placeholder="备注（可选），如：看教材" value="' + esc(t.note) + '" style="flex:1;min-width:160px"' + (busy ? ' disabled' : '') + '>' +
+      '</div>';
+    html += '<div class="row" style="justify-content:center;margin-top:12px">';
+    if (t.status === 'idle') html += btn(t.mode === 'cd' ? '▶ 开始倒计时' : '▶ 开始计时', 'timerStart', null, 'p');
+    if (t.status === 'running') html += btn('⏸ 暂停', 'timerPause');
+    if (t.status === 'paused') html += btn('▶ 继续', 'timerResume', null, 'p');
+    if (busy) html += btn('⏹ 结束并计入统计', 'timerFinish', null, 'ok');
+    if (t.status === 'finished') html += btn('📊 记录本次 ' + fmtLong(t.cdSec), 'timerFinish', null, 'ok');
+    if (t.status === 'finished') html += btn('放弃', 'timerReset');
+    if (busy) html += btn('✕ 放弃并重置', 'timerReset', null, 'bad');
+    html += '</div></div>';
+    html += '<div class="card"><div class="card-title"><span>使用说明</span></div><div class="mut">① 正计时：自由学习，随时结束；倒计时：番茄钟，预设或自定义分钟<br>② 可选绑定科目/章节，不选则记为「自由学习」<br>③ 结束/到时后自动计入统计：今日时长、连胜、7/30/90 天趋势、科目章节占比、时段分布<br>④ 暂停期间不计时</div></div>';
+    return html;
+  }
+  function pageStats() {
+    var v = userView();
+    var days = ui.statsDays;
+    var win = v.daily.length > days ? v.daily.slice(v.daily.length - days) : v.daily;
+    var sumWin = win.reduce(function (a, w) { return a + (w.sec || 0); }, 0);
+    var maxSec = Math.max.apply(null, win.map(function (w) { return w.sec || 0; }).concat([1]));
+    var blocks = [
+      { label: '深夜 0-3', sum: (v.hours[0] || 0) + (v.hours[1] || 0) + (v.hours[2] || 0) + (v.hours[3] || 0) },
+      { label: '凌晨 4-7', sum: (v.hours[4] || 0) + (v.hours[5] || 0) + (v.hours[6] || 0) + (v.hours[7] || 0) },
+      { label: '上午 8-11', sum: (v.hours[8] || 0) + (v.hours[9] || 0) + (v.hours[10] || 0) + (v.hours[11] || 0) },
+      { label: '下午 12-15', sum: (v.hours[12] || 0) + (v.hours[13] || 0) + (v.hours[14] || 0) + (v.hours[15] || 0) },
+      { label: '傍晚 16-19', sum: (v.hours[16] || 0) + (v.hours[17] || 0) + (v.hours[18] || 0) + (v.hours[19] || 0) },
+      { label: '夜晚 20-23', sum: (v.hours[20] || 0) + (v.hours[21] || 0) + (v.hours[22] || 0) + (v.hours[23] || 0) }
+    ];
+    var maxB = Math.max.apply(null, blocks.map(function (b) { return b.sum; }).concat([1]));
+    var html = '<div class="card"><div class="row"><span class="mut">时间范围</span>' +
+      [7, 30, 90].map(function (n) { return btn(n + ' 天', 'statsDays', n, days === n ? 'p' : null, 'btn-sm'); }).join('') +
+      '<span class="grow"></span><span class="mut">共 ' + v.sessionTotal + ' 次学习</span></div>' +
+      '<div class="row" style="margin-top:8px">' + chip('累计 ' + fmtLong(v.totalSec), 'gold') + chip('今日 ' + fmtLong(v.todaySec), 'ok') + chip('近 ' + days + ' 天 ' + fmtLong(sumWin)) + chip('日均 ' + fmtLong(Math.round(sumWin / days))) + '</div></div>';
+    html += '<div class="card"><div class="card-title"><span>每日学习时长（近 ' + days + ' 天）</span></div>' +
+      (win.length === 0 ? '<div class="empty">暂无学习记录</div>' :
+        '<div class="week" style="height:130px">' + win.map(function (w) {
+          var pct = Math.max(w.sec > 0 ? 8 : 2, Math.round(((w.sec || 0) / maxSec) * 100));
+          return '<div class="week-col" title="' + w.date + ' · ' + fmtLong(w.sec) + (w.sessions ? ' · ' + w.sessions + ' 次' : '') + '"><div class="week-bar" style="height:' + pct + '%;opacity:' + (w.sec > 0 ? 1 : 0.15) + '"></div><div class="week-day">' + w.label + '</div></div>';
+        }).join('') + '</div>') + '</div>';
+    html += '<div class="row"><div style="flex:1;min-width:250px">';
+    html += '<div class="card"><div class="card-title"><span>📖 科目时长占比</span><span class="mut">' + (v.totalSec ? '共 ' + fmtLong(v.totalSec) : '') + '</span></div>' +
+      (v.subj.length === 0 ? '<div class="empty">暂无记录</div>' :
+        v.subj.map(function (x) {
+          var pct = v.totalSec ? Math.round((x.seconds / v.totalSec) * 100) : 0;
+          return '<div style="margin-top:8px"><div class="row"><span class="grow" style="font-size:13px">' + esc(x.name) + '（' + x.sessions + ' 次）</span><span class="mut">' + fmtLong(x.seconds) + '</span></div>' +
+            '<div class="hbar" style="margin-top:4px"><div class="hbar-in" style="width:' + Math.max(pct, 2) + '%;background:var(--gold)"></div></div><div class="mut">占比 ' + pct + '%</div></div>';
+        }).join('')) + '</div>';
+    html += '<div class="card"><div class="card-title"><span>🕐 时段分布（何时最爱学习）</span></div>' +
+      blocks.map(function (b) {
+        var pct = Math.max(b.sum > 0 ? 4 : 1, Math.round((b.sum / maxB) * 100));
+        return '<div class="row" style="margin-top:6px"><span class="mut" style="width:84px">' + b.label + '</span><div class="hbar" style="flex:1"><div class="hbar-in" style="width:' + pct + '%"></div></div><span class="mut" style="width:76px;text-align:right">' + fmtLong(b.sum) + '</span></div>';
+      }).join('') + '</div>';
+    html += '</div><div style="flex:1;min-width:250px">';
+    html += '<div class="card"><div class="card-title"><span>📑 章节时长 TOP</span><span class="mut">' + v.chap.length + ' 项</span></div>' +
+      (v.chap.length === 0 ? '<div class="empty">暂无记录</div>' :
+        v.chap.slice(0, 10).map(function (c, i) {
+          return '<div class="row" style="margin-top:6px">' + chip(String(i + 1)) + '<span class="grow" style="font-size:13px">' + esc(c.chapter) + '</span><span class="mut">' + fmtLong(c.seconds) + '</span></div>';
+        }).join('')) + '</div>';
+    html += '<div class="card"><div class="card-title"><span>🕑 最近学习时刻</span></div>' +
+      (v.recents.length === 0 ? '<div class="empty">暂无记录</div>' :
+        v.recents.slice(0, 10).map(function (l) {
+          return '<div class="row" style="margin-top:6px">' + chip(fmtDate(l.at) + ' ' + fmtClock(l.at)) + '<span class="grow" style="font-size:13px">' + esc(l.subject + ' / ' + l.chapter) + '</span><span class="mut">' + fmtLong(l.seconds) + '</span></div>';
+        }).join('')) + '</div>';
+    html += '</div></div>';
+    return html;
+  }
+  function pageManage() {
+    var m = ui.manage;
+    if (m.page === 'list') {
+      var html = '<div class="card"><div class="card-title"><span>新建科目</span></div>' +
+        '<input id="subj-name" type="text" placeholder="科目名称，如：行测-资料分析">' +
+        '<input id="subj-desc" type="text" placeholder="说明（可选）" style="margin-top:6px">' +
+        '<div class="row" style="margin-top:8px">' + btn('创建科目', 'addSubject', null, 'ok') + '</div></div>';
+      html += store.subjects.length === 0 ? '<div class="card"><div class="empty">还没有科目</div></div>' :
+        store.subjects.map(function (s) {
+          var totalQ = 0;
+          s.chapters.forEach(function (c) { totalQ += c.questions.length; });
+          return '<div class="card"><div class="row"><span class="grow"><div style="font-weight:700">' + esc(s.name) + '</div><div class="mut">' + esc(s.desc || '') + '</div></span>' + chip(s.chapters.length + ' 章 / ' + totalQ + ' 题') + btn('管理', 'openSubject', s.id, 'p') + btn('重命名', 'renameSubject', s.id, null, 'btn-sm') + btn('删除', 'delSubject', s.id, 'bad', 'btn-sm') + '</div></div>';
+        }).join('');
+      return html;
+    }
+    var s = findSubj(m.subjectId);
+    if (!s) { ui.manage = { page: 'list', subjectId: null, chapterId: null, form: null }; return pageManage(); }
+    if (m.page === 'subject') {
+      var h1 = '<div class="row" style="margin-bottom:10px">' + btn('← 返回题库', 'manageBack') + '<span class="grow" style="font-weight:800;font-size:16px">' + esc(s.name) + '</span></div>';
+      h1 += '<div class="card"><div class="card-title"><span>章节</span></div>' +
+        '<div class="row"><input id="chap-name" type="text" placeholder="章节名，如：第三章 刑法" style="flex:1;min-width:180px">' + btn('+ 添加章节', 'addChapter', null, 'ok') + '</div>' +
+        (s.chapters.length === 0 ? '<div class="empty">还没有章节</div>' :
+          s.chapters.map(function (c) {
+            return '<div class="row" style="margin-top:6px"><span class="grow" style="font-weight:600">' + esc(c.name) + '（' + c.questions.length + ' 题）</span>' + btn('题目', 'openChapter', c.id, 'p', 'btn-sm') + btn('重命名', 'renameChapter', c.id, null, 'btn-sm') + btn('删除', 'delChapter', c.id, 'bad', 'btn-sm') + '</div>';
+          }).join('')) + '</div>';
+      return h1;
+    }
+    var c = findChap(s, m.chapterId);
+    if (!c) { ui.manage.page = 'subject'; return pageManage(); }
+    var h2 = '<div class="row" style="margin-bottom:10px">' + btn('← 返回科目', 'chapterBack') + '<span class="grow" style="font-weight:800;font-size:16px">' + esc(s.name + ' / ' + c.name) + '</span>' + (m.form ? '' : btn('+ 添加题目', 'qAdd', null, 'p')) + '</div>';
+    if (m.form) h2 += formQuestion(m.form);
+    h2 += c.questions.length === 0 ? '<div class="card"><div class="empty">本章还没有题目</div></div>' :
+      c.questions.map(function (q) {
+        var st = masteryState(user.mastery[q.id]);
+        var badge = st.mastered ? chip('已掌握', 'ok') : st.wrong ? chip('错题', 'bad') : st.a > 0 ? chip('练过 ' + st.a + ' 次') : chip('新题');
+        return '<div class="card"><div class="card-title"><span>' + (TYPE_NAMES[q.type] || q.type) + ' · ' + (st.a > 0 ? '对 ' + st.c + '/' + st.a : '未作答') + '</span><span class="row">' + badge + btn('编辑', 'qEdit', q.id, null, 'btn-sm') + btn('删除', 'qDel', q.id, 'bad', 'btn-sm') + '</span></div>' +
+          '<div style="font-weight:600">' + esc(q.stem) + '</div>' +
+          '<div class="mut" style="margin-top:6px">' + q.options.map(function (o) { return (q.answer.indexOf(o.key) >= 0 ? '✅ ' : '') + esc(o.key) + '. ' + esc(o.text); }).join('　') + '</div>' +
+          (q.analysis ? '<div class="mut" style="margin-top:4px">解析：' + esc(q.analysis) + '</div>' : '') + '</div>';
+      }).join('');
+    return h2;
+  }
+  function formQuestion(f) {
+    var opts = f.type === 'judge' ? [{ key: 'T', text: '正确' }, { key: 'F', text: '错误' }] : f.options;
+    var html = '<div class="card"><div class="card-title"><span>' + (f.id ? '编辑题目' : '添加题目') + '</span><span class="row"><span class="mut">题型</span>' +
+      ['single', 'judge', 'multi'].map(function (t) { return btn(TYPE_NAMES[t], 'qType', t, f.type === t ? 'p' : null, 'btn-sm'); }).join('') + '</span></div>';
+    html += '<textarea id="q-stem" placeholder="题干">' + esc(f.stem) + '</textarea>';
+    html += opts.map(function (o, i) {
+      var on = f.ansKeys.indexOf(o.key) >= 0;
+      if (f.type === 'judge') {
+        return '<div class="row" style="margin-top:6px"><label class="label-check">' +
+          '<input type="' + (f.type === 'multi' ? 'checkbox' : 'radio') + '" name="qans" data-act="qAns" data-arg="' + o.key + '"' + (on ? ' checked' : '') + '>' +
+          '<span class="opt-key">' + o.key + '</span><b>' + esc(o.text) + '</b></label></div>';
+      }
+      return '<div class="row" style="margin-top:6px"><label class="label-check">' +
+        '<input type="' + (f.type === 'multi' ? 'checkbox' : 'radio') + '" name="qans" data-act="qAns" data-arg="' + o.key + '"' + (on ? ' checked' : '') + '>' +
+        '<span class="opt-key">' + esc(o.key) + '</span></label>' +
+        '<input id="q-opt-' + i + '" type="text" placeholder="选项内容" value="' + esc(o.text) + '" style="flex:1">' +
+        '</div>';
+    }).join('');
+    if (f.type !== 'judge') {
+      html += '<div class="row" style="margin-top:6px">' + btn('+ 选项', 'qAddOpt', null, null, 'btn-sm') + btn('- 删末项', 'qDelOpt', null, null, 'btn-sm') + '<span class="mut">勾选左侧圆圈/方框设定正确答案' + (f.type === 'multi' ? '（可多选）' : '') + '</span></div>';
+    }
+    html += '<input id="q-analysis" type="text" placeholder="解析（可选）" value="' + esc(f.analysis) + '" style="margin-top:8px">';
+    html += '<div class="row" style="margin-top:10px">' + btn('保存题目', 'qSave', null, 'ok') + btn('取消', 'qCancel') + '</div></div>';
+    return html;
+  }
+  function render() {
+    var app = document.getElementById('app');
+    if (!app) return;
+    var v = userView();
+    var body;
+    if (ui.quiz) body = pageQuiz();
+    else if (ui.page === 'home') body = pageHome(v);
+    else if (ui.page === 'learn') body = pageLearn();
+    else if (ui.page === 'timer') body = pageTimer();
+    else if (ui.page === 'stats') body = pageStats();
+    else body = pageManage();
+    app.innerHTML = header(v) + body + (ui.toast ? '<div class="toast">' + esc(ui.toast) + '</div>' : '');
+  }
+
+  /* ---------- 事件 ---------- */
+  function onClick(e) {
+    var el = e.target.closest ? e.target.closest('[data-act]') : null;
+    if (!el) return;
+    var act = el.getAttribute('data-act');
+    var arg = el.getAttribute('data-arg');
+    if (el.tagName === 'INPUT' && (el.type === 'checkbox' || el.type === 'radio')) {
+      if (act === 'toggleGoal') { ACT.toggleGoal(arg); return; }
+      if (act === 'qAns') { ACT.qAns(arg); return; }
+      return;
+    }
+    if (el.tagName === 'SELECT') return;
+    if (!ACT[act]) return;
+    if (act === 'startQuiz') { var p = String(arg).split('|'); ACT.startQuiz(p[0], p[1], p[2]); return; }
+    if (act === 'timerPreset' || act === 'statsDays' || act === 'qRate') { ACT[act](Number(arg)); return; }
+    if (arg === null || arg === undefined) { ACT[act](); return; }
+    ACT[act](arg);
+  }
+  function onChange(e) {
+    var el = e.target;
+    if (!el || !el.getAttribute) return;
+    var act = el.getAttribute('data-act');
+    if (act === 'timerSubj') { ui.timer.subjId = el.value; ui.timer.chapId = ''; render(); return; }
+    if (el.id === 't-chap') { ui.timer.chapId = el.value; render(); return; }
+    if (el.id === 't-note') { ui.timer.note = el.value; return; }
+    if (el.id === 'import-file') { onImportFile(el); return; }
+  }
+  function boot() {
+    document.addEventListener('click', onClick);
+    document.addEventListener('change', onChange);
+    var imp = document.createElement('input');
+    imp.type = 'file'; imp.accept = '.json,application/json'; imp.id = 'import-file'; imp.style.display = 'none';
+    document.body.appendChild(imp);
+    render();
+  }
+  try { if (typeof window !== 'undefined') window.__learnhub = { ui: ui, render: render, ACT: ACT }; } catch (e) {}
+  if (typeof document !== 'undefined' && typeof localStorage !== 'undefined') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+    else boot();
+  }
+})();
+</script>
+</body>
+</html>
