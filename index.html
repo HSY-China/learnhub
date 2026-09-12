@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>学习空间 v1.0 · 一站式个性化学习平台</title>
+<title>学习空间 v1.5 · 一站式个性化学习平台</title>
 <style>
 :root{--bg:#f5f7fb;--card:#ffffff;--line:#e3e8ef;--text:#1f2937;--mut:#6b7280;--acc:#4f6ef2;--acc-soft:#eef1fe;--ok:#0f9d58;--ok-soft:#e6f6ee;--bad:#e5484d;--bad-soft:#fdeeee;--gold:#d97706;--gold-soft:#fdf1dd}
 *{box-sizing:border-box}
@@ -73,6 +73,12 @@ textarea{min-height:52px;resize:vertical}
 .dragging{opacity:.45}
 .item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 12px;margin:6px 0}
 .item-done{opacity:.55}
+.fab{position:fixed;right:18px;bottom:18px;z-index:20;border:none;border-radius:999px;padding:12px 18px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.22);font-family:inherit;background:var(--acc);color:#fff}
+.fab-on{background:var(--bad)}
+.fab:hover{opacity:.92}
+.modal{position:fixed;inset:0;background:rgba(15,20,30,.45);z-index:30;display:flex;align-items:center;justify-content:center;padding:18px}
+.modal-card{background:var(--card);border-radius:14px;padding:16px 18px;max-width:520px;width:100%;max-height:86vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.3)}
+.askrow{background:var(--acc-soft);border-radius:10px;padding:8px 12px;margin:6px 0}
 @media (prefers-color-scheme: dark){
 :root{--bg:#10141c;--card:#1a212c;--line:#2a3442;--text:#e5e9f0;--mut:#8b96a5;--acc:#6d8bff;--acc-soft:#202c4d;--ok:#2ecc71;--ok-soft:#13301f;--bad:#ff6b70;--bad-soft:#3a1a1d;--gold:#f0a63e;--gold-soft:#3a2c10}
 input,input[type=text],input[type=number],textarea,select,.option,.tag{background:#121826;color:var(--text)}
@@ -86,9 +92,10 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
 (function () {
   'use strict';
   var KEY = 'learnhub.store.v1';
-  var APP_VERSION = 'v1.0';
+  var APP_VERSION = 'v1.5';
   var TYPE_NAMES = { single: '单选', judge: '判断', multi: '多选' };
-  var MODE_LABEL = { quiz: '测验', review: '错题回顾', timer: '计时', countdown: '倒计时' };
+  var MODE_LABEL = { quiz: '测验', review: '错题回顾', timer: '计时', countdown: '倒计时', manual: '补录', session: '学习会话' };
+  var SESSION_TYPES = ['看书', '上课', '刷题', '看视频', '背诵', '其他'];
   var ITEM_META = {
     material: { icon: '📂', label: '看资料' },
     quiz: { icon: '📝', label: '做测验' },
@@ -546,6 +553,150 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   function kindLabel(k) { return k === 'link' ? '链接' : k === 'note' ? '笔记' : '文件'; }
   function statusLabel(s) { return s === 'done' ? '已掌握' : s === 'doing' ? '学习中' : '未开始'; }
 
+  /* ================= 内置 Office 预览（零依赖：zip + XML 自解析） ================= */
+  function extOf(name) { var m = /\.([a-z0-9]+)$/i.exec(String(name || '')); return m ? m[1].toLowerCase() : ''; }
+  var OFFICE_NEW = ['docx', 'xlsx', 'pptx'];
+  var OFFICE_OLD = ['doc', 'xls', 'ppt'];
+  var INLINE_OK = ['pdf', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg', 'txt', 'md', 'csv', 'mp3', 'wav', 'm4a', 'aac', 'mp4', 'webm', 'mov', 'mkv'];
+  function isOfficeNew(name) { return OFFICE_NEW.indexOf(extOf(name)) >= 0; }
+  function isOfficeOld(name) { return OFFICE_OLD.indexOf(extOf(name)) >= 0; }
+  function isInlineOk(name) { return INLINE_OK.indexOf(extOf(name)) >= 0; }
+  function unzip(buffer) {
+    var u8 = new Uint8Array(buffer), view = new DataView(buffer), eocd = -1;
+    for (var i = u8.length - 22; i >= 0 && i >= u8.length - 66000; i--) {
+      if (view.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    }
+    if (eocd < 0) throw new Error('不是有效的 Office 文件');
+    var count = view.getUint16(eocd + 10, true), cd = view.getUint32(eocd + 16, true);
+    var map = {}, names = [], p = cd;
+    for (var n = 0; n < count; n++) {
+      if (view.getUint32(p, true) !== 0x02014b50) break;
+      var method = view.getUint16(p + 10, true);
+      var compSize = view.getUint32(p + 20, true);
+      var nameLen = view.getUint16(p + 28, true);
+      var extraLen = view.getUint16(p + 30, true);
+      var cmtLen = view.getUint16(p + 32, true);
+      var localOffset = view.getUint32(p + 42, true);
+      var name = new TextDecoder('utf-8').decode(u8.subarray(p + 46, p + 46 + nameLen));
+      map[name] = { method: method, compSize: compSize, localOffset: localOffset };
+      names.push(name);
+      p += 46 + nameLen + extraLen + cmtLen;
+    }
+    return { names: names, map: map, u8: u8, view: view };
+  }
+  function unzipEntry(zip, name) {
+    return new Promise(function (resolve, reject) {
+      var e = zip.map[name];
+      if (!e) { resolve(null); return; }
+      var p = e.localOffset;
+      if (zip.view.getUint32(p, true) !== 0x04034b50) { reject(new Error('压缩包结构异常')); return; }
+      var nameLen = zip.view.getUint16(p + 26, true);
+      var extraLen = zip.view.getUint16(p + 28, true);
+      var start = p + 30 + nameLen + extraLen;
+      var data = zip.u8.subarray(start, start + e.compSize);
+      if (e.method === 0) { resolve(data); return; }
+      if (e.method !== 8) { reject(new Error('不支持的压缩方式')); return; }
+      if (typeof DecompressionStream === 'undefined') { reject(new Error('当前浏览器不支持解压预览')); return; }
+      try {
+        var stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        new Response(stream).arrayBuffer().then(function (buf) { resolve(new Uint8Array(buf)); }, reject);
+      } catch (err) { reject(err); }
+    });
+  }
+  function unzipText(zip, name) {
+    return unzipEntry(zip, name).then(function (u8) {
+      return u8 ? new TextDecoder('utf-8').decode(u8) : null;
+    });
+  }
+  function xmlTags(node, local) {
+    var out = [], all = node.getElementsByTagName('*');
+    for (var i = 0; i < all.length; i++) if (all[i].localName === local) out.push(all[i]);
+    return out;
+  }
+  async function parseDocx(buffer) {
+    var zip = unzip(buffer);
+    var xmlText = await unzipText(zip, 'word/document.xml');
+    if (!xmlText) throw new Error('未找到文档正文');
+    var doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+    var out = '', rows = [];
+    Array.prototype.forEach.call(doc.getElementsByTagName('*'), function (el) {
+      if (el.localName !== 'p') return;
+      if (el.parentNode && el.parentNode.localName === 'tc') return; /* 表格内段落稍后统一处理 */
+      var style = '';
+      var ps = xmlTags(el, 'pStyle')[0];
+      if (ps) style = ps.getAttribute('w:val') || '';
+      var text = xmlTags(el, 't').map(function (t) { return t.textContent; }).join('');
+      if (!text.trim()) { out += '<div style="height:8px"></div>'; return; }
+      var h = /^Heading(\d)/i.exec(style);
+      if (h) { var lv = Math.min(6, parseInt(h[1], 10)); out += '<h' + lv + '>' + esc(text) + '</h' + lv + '>'; }
+      else if (/Title/i.test(style)) out += '<h2>' + esc(text) + '</h2>';
+      else out += '<p>' + esc(text) + '</p>';
+    });
+    xmlTags(doc, 'tbl').forEach(function (tbl) {
+      var html = '<table style="border-collapse:collapse;margin:8px 0">';
+      xmlTags(tbl, 'tr').forEach(function (tr) {
+        html += '<tr>';
+        xmlTags(tr, 'tc').forEach(function (tc) {
+          var txt = xmlTags(tc, 't').map(function (t) { return t.textContent; }).join('');
+          html += '<td style="border:1px solid var(--line);padding:4px 8px">' + esc(txt) + '</td>';
+        });
+        html += '</tr>';
+      });
+      out += html + '</table>';
+    });
+    return out || '<div class="empty">文档没有可显示的文本内容</div>';
+  }
+  async function parseXlsx(buffer) {
+    var zip = unzip(buffer);
+    var shared = [];
+    var ssText = await unzipText(zip, 'xl/sharedStrings.xml');
+    if (ssText) {
+      var sdoc = new DOMParser().parseFromString(ssText, 'application/xml');
+      xmlTags(sdoc, 'si').forEach(function (si) {
+        shared.push(xmlTags(si, 't').map(function (t) { return t.textContent; }).join(''));
+      });
+    }
+    var sheets = zip.names.filter(function (n) { return /^xl\/worksheets\/sheet\d+\.xml$/.test(n); })
+      .sort(function (a, b) { return parseInt(/\d+/.exec(a)[0], 10) - parseInt(/\d+/.exec(b)[0], 10); });
+    if (!sheets.length) throw new Error('未找到工作表');
+    var out = '';
+    for (var si2 = 0; si2 < Math.min(sheets.length, 3); si2++) {
+      var sheetXml = await unzipText(zip, sheets[si2]);
+      var doc = new DOMParser().parseFromString(sheetXml, 'application/xml');
+      var html = '<table style="border-collapse:collapse;font-size:12px;margin:8px 0">';
+      xmlTags(doc, 'row').slice(0, 300).forEach(function (r) {
+        html += '<tr>';
+        xmlTags(r, 'c').forEach(function (c) {
+          var t = c.getAttribute('t'), v = xmlTags(c, 'v')[0], val = v ? v.textContent : '';
+          if (t === 's') val = shared[parseInt(val, 10)] || '';
+          else if (t === 'inlineStr') val = xmlTags(c, 't').map(function (x) { return x.textContent; }).join('');
+          html += '<td style="border:1px solid var(--line);padding:3px 7px;white-space:nowrap">' + esc(val) + '</td>';
+        });
+        html += '</tr>';
+      });
+      out += html + '</table>';
+      if (sheets.length > 1) out += '<div class="mut">（共 ' + sheets.length + ' 个工作表，此处显示前 3 个）</div>';
+    }
+    return out;
+  }
+  async function parsePptx(buffer) {
+    var zip = unzip(buffer);
+    var slides = zip.names.filter(function (n) { return /^ppt\/slides\/slide\d+\.xml$/.test(n); })
+      .sort(function (a, b) { return parseInt(/\d+/.exec(a)[0], 10) - parseInt(/\d+/.exec(b)[0], 10); });
+    if (!slides.length) throw new Error('未找到幻灯片');
+    var out = '';
+    for (var i = 0; i < slides.length; i++) {
+      var xml = await unzipText(zip, slides[i]);
+      var doc = new DOMParser().parseFromString(xml, 'application/xml');
+      var texts = xmlTags(doc, 't').map(function (t) { return t.textContent; }).filter(function (s) { return s.trim(); });
+      out += '<div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:8px 0">' +
+        '<div class="mut">第 ' + (i + 1) + ' 页</div>' +
+        (texts.length ? texts.map(function (t) { return '<div>' + esc(t) + '</div>'; }).join('') : '<div class="mut">（本页无文字，版式请下载查看）</div>') +
+        '</div>';
+    }
+    return out;
+  }
+
   /* ================= 界面状态 ================= */
   function newTimer() {
     return { mode: 'stop', status: 'idle', elapsed: 0, cdMin: '25', cdSec: 1500, remain: 1500, folderId: '', note: '', tick: null };
@@ -556,7 +707,10 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     lib: { q: '', folderId: '', tag: '', type: '', sort: 'recent', form: null, expanded: null, keepFocus: null },
     listId: null, listForm: null, itemForm: null, itemEdit: null, itemPostpone: null,
     qform: null, folderMenu: null, drag: null, quiz: null, timer: newTimer(),
-    statsDays: 30, toast: null, toastTimer: null
+    statsDays: 30, toast: null, toastTimer: null,
+    manual: { folderId: '', date: '', min: '30', note: '' },
+    session: { active: false, startAt: 0, elapsed: 0, tick: null, folderId: '', type: '看书', note: '' },
+    sessionAsk: false, itemDoneAsk: null, preview: null
   };
   function toast(msg) {
     ui.toast = msg;
@@ -739,7 +893,11 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var f = ui.lib.form; if (!f) return;
     var title = (val('lib-title') || '').trim();
     var tags = (val('lib-tags') || '').split(/[,，\s]+/).filter(function (x) { return !!x; });
-    var fid = val('lib-folder-sel') || '';
+    /* 文件夹归属：优先读表单下拉；在文件夹页内下拉被隐藏时，沿用表单自带的归属（修复：原先恒为空导致资料落入「未归档」） */
+    var selEl = document.getElementById('lib-folder-sel');
+    var fid = selEl ? (selEl.value || '') : (f.folderId || '');
+    var folderObj = fid ? folderById(fid) : null;
+    var folderTip = folderObj ? '（归入「' + folderObj.name + '」）' : '（未归档）';
     var note = val('lib-note') || '';
     if (f.id) {
       var m = materialById(f.id); if (!m) return;
@@ -748,7 +906,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       if (m.kind === 'link') { var u = (val('lib-url') || '').trim(); if (u) m.url = /^https?:\/\//i.test(u) ? u : 'https://' + u; }
       if (m.kind === 'note') m.text = val('lib-text') || '';
       applyQuestionLinks(m.id, f.questionIds);
-      ui.lib.form = null; saveStore(); render(); toast('资料已更新'); return;
+      ui.lib.form = null; saveStore(); render(); toast('资料已更新' + folderTip); return;
     }
     if (f.kind === 'file') {
       var inp = document.getElementById('lib-files');
@@ -765,7 +923,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
         });
         filePut(id, file, file.name).then(function () {
           done++;
-          if (done === files.length && !failed) { applyQuestionLinks(id, f.questionIds); saveStore(); ui.lib.form = null; render(); toast('已添加 ' + done + ' 份资料'); }
+          if (done === files.length && !failed) { applyQuestionLinks(id, f.questionIds); saveStore(); ui.lib.form = null; render(); toast('已添加 ' + done + ' 份资料' + folderTip); }
         }).catch(function () {
           failed = true; filesOk = false;
           saveStore(); ui.lib.form = null; render();
@@ -785,7 +943,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       store.materials.push({ id: id2, kind: 'note', title: title || text.slice(0, 24), folderId: fid, tags: tags, note: note, text: text, status: 'new', fav: false, opens: 0, lastOpenAt: 0, createdAt: Date.now() });
     }
     applyQuestionLinks(id2, f.questionIds);
-    saveStore(); ui.lib.form = null; render(); toast('资料已添加');
+    saveStore(); ui.lib.form = null; render(); toast('资料已添加' + folderTip);
   };
   function applyQuestionLinks(materialId, questionIds) {
     questionIds = questionIds || [];
@@ -804,12 +962,53 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (m.kind === 'link') { window.open(m.url, '_blank'); saveStore(); render(); return; }
     fileGet(id).then(function (blob) {
       if (!blob) { toast('文件内容已丢失，请重新上传'); return; }
-      var u = URL.createObjectURL(blob);
-      var w = window.open(u, '_blank');
-      if (!w) toast('浏览器拦截了新窗口，请允许本站弹出窗口');
-      setTimeout(function () { URL.revokeObjectURL(u); }, 180000);
+      var name = m.fileName || m.title || '';
+      /* Office 新格式：浏览器不能直接渲染 → 用内置预览器解析（zip + XML） */
+      if (isOfficeNew(name)) {
+        toast('正在解析预览…');
+        blob.arrayBuffer().then(function (buf) {
+          var p = extOf(name) === 'docx' ? parseDocx(buf) : extOf(name) === 'xlsx' ? parseXlsx(buf) : parsePptx(buf);
+          return p.then(function (html) {
+            ui.preview = {
+              id: id, title: m.title,
+              note: '页内预览为文字/表格还原，复杂版式请点「下载原文件」用 Office 查看。',
+              html: html
+            };
+            saveStore(); render();
+          });
+        }).catch(function (e) {
+          toast('预览失败：' + ((e && e.message) || '未知原因') + '，已改为下载');
+          ACT.libDownload(id);
+        });
+        return;
+      }
+      /* 旧版 Office 二进制格式无法解析 */
+      if (isOfficeOld(name)) {
+        saveStore(); render();
+        toast('旧版 Office 格式无法页内预览，已开始下载，用 Office/WPS 打开');
+        ACT.libDownload(id);
+        return;
+      }
+      /* PDF / 图片 / 音视频 / 文本：浏览器直接打开 */
+      if (isInlineOk(name)) {
+        var u = URL.createObjectURL(blob);
+        var w = window.open(u, '_blank');
+        if (!w) toast('浏览器拦截了新窗口，请允许本站弹出窗口');
+        setTimeout(function () { URL.revokeObjectURL(u); }, 180000);
+        saveStore(); render();
+        return;
+      }
       saveStore(); render();
+      toast('该格式无法页内预览，已开始下载');
+      ACT.libDownload(id);
     }).catch(function () { toast('无法读取文件内容'); });
+  };
+  ACT.previewClose = function () { ui.preview = null; render(); };
+  ACT.linkOfficePreview = function (id) {
+    var m = materialById(id); if (!m || !m.url) return;
+    var url = 'https://view.officeapps.live.com/op/view.aspx?src=' + encodeURIComponent(m.url);
+    var w = window.open(url, '_blank');
+    if (!w) toast('浏览器拦截了新窗口，请允许本站弹出窗口');
   };
   ACT.libDownload = function (id) {
     var m = materialById(id); if (!m) return;
@@ -1142,21 +1341,115 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (it.kind === 'material' || it.kind === 'quiz' || it.kind === 'review') { var r = val('item-ref'); if (r) it.refId = r; }
     ui.itemEdit = null; saveStore(); render(); toast('已更新计划');
   };
-  ACT.itemToggle = function (id) {
-    var l = store.lists.filter(function (x) { return (x.items || []).some(function (i) { return i.id === id; }); })[0];
-    if (!l) return;
+  /* ---- 时间记账（学习会话 / 任务完成共用） ---- */
+  function addTimeLog(folderId, seconds, comment, mode) {
     var tk = todayKey();
-    (l.items || []).forEach(function (i) {
-      if (i.id !== id) return;
-      if (i.repeat) {
-        i.doneMap = i.doneMap || {};
-        if (i.doneMap[tk]) delete i.doneMap[tk];
-        else { i.doneMap[tk] = true; i.doneAt = Date.now(); }
-      } else {
-        i.done = !i.done;
-        i.doneAt = i.done ? Date.now() : 0;
-      }
+    if (!user.checkIns[tk]) user.checkIns[tk] = { sec: 0, checkedIn: false, sessions: 0 };
+    user.checkIns[tk].sec += seconds;
+    user.checkIns[tk].sessions += 1;
+    var f = folderId ? folderById(folderId) : null;
+    user.logs.push({
+      id: genId('log'), at: Date.now(), date: tk, folderId: f ? f.id : '', folderName: f ? f.name : '网页外学习',
+      mode: mode || 'session', seconds: seconds, correct: 0, total: 0, rating: 0, tags: [], comment: comment || ''
     });
+    bumpStreak(user);
+  }
+  function listOfItem(id) {
+    return store.lists.filter(function (x) { return (x.items || []).some(function (i) { return i.id === id; }); })[0] || null;
+  }
+  function markItemDone(it, tk) {
+    tk = tk || todayKey();
+    if (it.repeat) { it.doneMap = it.doneMap || {}; it.doneMap[tk] = true; it.doneAt = Date.now(); }
+    else { it.done = true; it.doneAt = Date.now(); }
+    if (it.skipMap) delete it.skipMap[tk];
+  }
+  function unmarkItemDone(it, tk) {
+    tk = tk || todayKey();
+    if (it.repeat) { if (it.doneMap) delete it.doneMap[tk]; }
+    else { it.done = false; it.doneAt = 0; }
+  }
+  /* ---- ① 全局学习会话 ---- */
+  ACT.sessionStart = function () {
+    var s = ui.session;
+    if (s.active) return;
+    s.active = true; s.startAt = Date.now(); s.elapsed = 0;
+    try { localStorage.setItem('learnhub.session', JSON.stringify({ startAt: s.startAt })); } catch (e) {}
+    startSessionTick();
+    render();
+    toast('已开始记录学习时间，学完点右下角「结束学习」');
+  };
+  ACT.sessionStop = function () {
+    var s = ui.session;
+    if (!s.active) return;
+    s.elapsed = Math.max(0, Math.round((Date.now() - s.startAt) / 1000));
+    s.active = false;
+    stopSessionTick();
+    ui.sessionAsk = true;
+    render();
+  };
+  ACT.sessionCancel = function () {
+    ui.sessionAsk = false;
+    ui.session = { active: false, startAt: 0, elapsed: 0, tick: null, folderId: '', type: '看书', note: '' };
+    try { localStorage.removeItem('learnhub.session'); } catch (e) {}
+    render();
+    toast('已放弃本次会话，未记录时长');
+  };
+  ACT.sessionSave = function () {
+    var s = ui.session;
+    var min = Math.max(1, Math.min(1440, Math.round(num('s-min', Math.max(1, Math.round(s.elapsed / 60))))));
+    var fid = val('s-folder') || '';
+    var typ = val('s-type') || '看书';
+    var note = (val('s-note') || '').trim();
+    addTimeLog(fid, min * 60, typ + (note ? '：' + note : ''), 'session');
+    ui.sessionAsk = false;
+    ui.session = { active: false, startAt: 0, elapsed: 0, tick: null, folderId: '', type: '看书', note: '' };
+    try { localStorage.removeItem('learnhub.session'); } catch (e) {}
+    saveStore(); render();
+    toast('已记录 ' + min + ' 分钟（' + typ + '）');
+  };
+  function startSessionTick() {
+    stopSessionTick();
+    ui.session.tick = setInterval(function () {
+      if (!ui.session.active) return;
+      var sec = Math.max(0, Math.round((Date.now() - ui.session.startAt) / 1000));
+      ui.session.elapsed = sec;
+      var el = document.getElementById('fab-time');
+      if (el) el.textContent = fmtHMS(sec);
+    }, 1000);
+  }
+  function stopSessionTick() { if (ui.session.tick) { clearInterval(ui.session.tick); ui.session.tick = null; } }
+  /* ---- ② 任务完成时确认实际时长 ---- */
+  ACT.itemDoneCancel = function () { ui.itemDoneAsk = null; render(); };
+  ACT.itemDoneConfirm = function (id) {
+    var l = listOfItem(id); var it = l && (l.items || []).filter(function (i) { return i.id === id; })[0];
+    if (!l || !it) { ui.itemDoneAsk = null; render(); return; }
+    var min = Math.max(0, Math.min(1440, Math.round(num('ask-min', 0))));
+    markItemDone(it);
+    if (min > 0) addTimeLog(l.folderId || '', min * 60, itemTitle(it), 'session');
+    ui.itemDoneAsk = null; saveStore(); render();
+    toast(min > 0 ? '已完成并记录 ' + min + ' 分钟' : '已完成');
+  };
+  ACT.itemDoneSkip = function (id) {
+    var l = listOfItem(id); var it = l && (l.items || []).filter(function (i) { return i.id === id; })[0];
+    if (!l || !it) { ui.itemDoneAsk = null; render(); return; }
+    markItemDone(it);
+    ui.itemDoneAsk = null; saveStore(); render(); toast('已完成（未记录时长）');
+  };
+  ACT.itemToggle = function (id) {
+    var l = listOfItem(id);
+    if (!l) return;
+    var it = (l.items || []).filter(function (i) { return i.id === id; })[0];
+    if (!it) return;
+    var tk = todayKey();
+    if (isDoneToday(it, tk)) { unmarkItemDone(it, tk); saveStore(); render(); return; }
+    /* 计时/待办类任务：勾选时顺手确认实际时长，记录与完成一步完成 */
+    if (it.kind === 'timer' || it.kind === 'task') {
+      var def = it.kind === 'timer' ? (it.minutes || 25) : 30;
+      ui.itemDoneAsk = { id: id, minutes: String(def) };
+      render();
+      return;
+    }
+    markItemDone(it, tk);
     saveStore(); render();
   };
   function findItemById(id) {
@@ -1285,6 +1578,40 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
   }
   function stopTick() { if (ui.timer.tick) { clearInterval(ui.timer.tick); ui.timer.tick = null; } }
   ACT.statsDays = function (n) { ui.statsDays = n; render(); };
+  /* ---- 补录学习时长（网页外学习） ---- */
+  ACT.manualLog = function () {
+    var tk = val('m-date') || todayKey();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(tk)) { toast('日期格式不正确'); return; }
+    if (tk > todayKey()) { toast('不能补录未来的日期'); return; }
+    var min = Math.max(1, Math.min(1440, Math.round(num('m-min', 30))));
+    var fid = val('m-folder') || '';
+    var f = fid ? folderById(fid) : null;
+    var sec = min * 60;
+    if (!user.checkIns[tk]) user.checkIns[tk] = { sec: 0, checkedIn: false, sessions: 0 };
+    user.checkIns[tk].sec += sec;
+    user.checkIns[tk].sessions += 1;
+    var at = (tk === todayKey()) ? Date.now() : new Date(tk + 'T12:00:00').getTime();
+    user.logs.push({
+      id: genId('log'), at: at, date: tk, folderId: f ? f.id : '', folderName: f ? f.name : '网页外学习',
+      mode: 'manual', seconds: sec, correct: 0, total: 0, rating: 0, tags: [],
+      comment: (val('m-note') || '').trim()
+    });
+    if (tk === todayKey()) bumpStreak(user);
+    ui.manual = { folderId: '', date: '', min: '30', note: '' };
+    saveStore(); render();
+    toast('已补录 ' + fmtLong(sec) + '（' + tk + (f ? ' · ' + f.name : '') + '）');
+  };
+  function manualCard() {
+    return '<div class="card"><div class="card-title"><span>✍️ 补录学习时长（网页外学习）</span></div>' +
+      '<div class="mut">看纸质书、上课、用其他 App 学习时网页无法自动计时，可在这里补录；会计入每日趋势、文件夹时长占比与时段分布。</div>' +
+      '<div class="row" style="margin-top:8px">' +
+      sel('m-folder', folderOptions(true, '不归属文件夹（记为「网页外学习」）'), ui.manual.folderId, 'flex:1;min-width:200px;max-width:300px') +
+      '<input id="m-date" type="date" value="' + esc(ui.manual.date || todayKey()) + '" style="max-width:170px">' +
+      '<input id="m-min" type="number" min="1" max="1440" value="' + esc(ui.manual.min) + '" style="width:100px">' +
+      '<span class="mut">分钟</span></div>' +
+      '<div class="row" style="margin-top:8px"><input id="m-note" type="text" placeholder="备注（可选），如：看教材第三章" value="' + esc(ui.manual.note) + '" style="flex:1;min-width:200px">' +
+      btn('记录时长', 'manualLog', null, 'ok') + '</div></div>';
+  }
 
   function onImportFile(input) {
     var f = input.files && input.files[0]; if (!f) return;
@@ -1345,6 +1672,9 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (lq.length) meta.push('关联 ' + lq.length + ' 题');
     if (m.opens) meta.push('打开 ' + m.opens + ' 次');
     if (m.lastOpenAt) meta.push('最近 ' + fmtDate(m.lastOpenAt) + ' ' + fmtClock(m.lastOpenAt));
+    var fname = m.kind === 'file' ? (m.fileName || m.title || '') : '';
+    if (m.kind === 'file' && isOfficeNew(fname)) meta.push('可页内预览');
+    if (m.kind === 'file' && isOfficeOld(fname)) meta.push('需下载查看');
     var html = '<div class="card" draggable="true" data-drag="material:' + m.id + '"><div class="row">' +
       '<span style="font-size:22px">' + libIcon(m) + '</span>' +
       '<span class="grow"><div style="font-weight:700">' + (m.fav ? '⭐ ' : '') + esc(m.title) + '</div>' +
@@ -1352,8 +1682,9 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       ((m.tags && m.tags.length) ? '<div style="margin-top:2px">' + m.tags.map(function (t) { return chip('#' + t); }).join(' ') + '</div>' : '') +
       (m.note ? '<div class="mut" style="margin-top:2px">备注：' + esc(m.note) + '</div>' : '') +
       '</span>' + chip(statusLabel(m.status), m.status === 'done' ? 'ok' : m.status === 'doing' ? 'gold' : '') +
-      btn('打开', 'libOpen', m.id, 'p', 'btn-sm') +
+      btn(m.kind === 'file' && isOfficeNew(fname) ? '预览' : '打开', 'libOpen', m.id, 'p', 'btn-sm') +
       (m.kind === 'file' ? btn('下载', 'libDownload', m.id, null, 'btn-sm') : '') +
+      (m.kind === 'link' && /\.(docx?|xlsx?|pptx?|csv|pdf)(\?|$)/i.test(m.url || '') ? btn('在线预览', 'linkOfficePreview', m.id, null, 'btn-sm') : '') +
       btn('状态', 'libStatus', m.id, null, 'btn-sm') +
       btn(m.fav ? '★' : '☆', 'libFav', m.id, null, 'btn-sm') +
       btn('出题', 'libFromMaterial', m.id, null, 'btn-sm') +
@@ -1412,13 +1743,14 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
       (tasks.length === 0 ? '<div class="empty">' + (store.lists.length === 0 ? '还没有清单。去「✅ 学习清单」把「看资料 → 做题 → 计时」排成流程，并给任务设置计划日期。' : '今天没有安排任务。') + '</div>' :
         tasks.map(function (t) {
           var it = t.item;
-          return '<div class="item' + (t.done ? ' item-done' : '') + '">' +
+          var row = '<div class="item' + (t.done ? ' item-done' : '') + '">' +
             '<label class="label-check"><input type="checkbox" data-act="itemToggle" data-arg="' + it.id + '"' + (t.done ? ' checked' : '') + '></label>' +
             '<span style="font-size:18px">' + ITEM_META[it.kind].icon + '</span>' +
             '<span class="grow"><div style="font-weight:600' + (t.done ? ';text-decoration:line-through' : '') + '">' + esc(itemTitle(it)) + '</div>' +
             '<div class="mut">' + esc(t.list.name) + ' · 📅 ' + esc(scheduleLabel(it)) + '</div></span>' +
             (t.overdue && !t.done ? chip('逾期', 'bad') : '') +
             btn('开始', 'itemStart', it.id, 'p', 'btn-sm') + '</div>';
+          return row + doneAskRow(it);
         }).join('')) +
       (store.lists.length ? '<div class="row" style="margin-top:10px">' + store.lists.map(function (l) {
         var td = listToday(l);
@@ -1710,6 +2042,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
               btn('改到该日期', 'itemPostponeDate', it.id, 'ok', 'btn-sm') + btn('取消', 'itemPostponeCancel', null, null, 'btn-sm') + '</div>') +
           '</div>';
       }
+      row += doneAskRow(it);
       return row;
     }).join('');
   }
@@ -1720,13 +2053,14 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     html += '<input id="lib-title" type="text" placeholder="标题（可留空）" value="' + esc(f.title || '') + '">';
     if (f.kind === 'file' && !f.id) {
       html += '<div class="row" style="margin-top:8px"><input id="lib-files" type="file" multiple style="padding:6px;border:1px dashed var(--line);border-radius:8px"></div>' +
-        '<div class="mut" style="margin-top:4px">支持 PDF / PPT / Word / Excel / 图片 / 音视频 / 压缩包，可一次选多个；文件只保存在你本机浏览器中。</div>';
+        '<div class="mut" style="margin-top:4px">支持 PDF / Word(.docx) / Excel(.xlsx) / PPT(.pptx) / 图片 / 音视频 / 压缩包，可一次选多个；文件只保存在你本机浏览器中。<br>PDF、图片、音视频可直接打开；<b>.docx / .xlsx / .pptx 可在页内预览（文字与表格）</b>；旧版 .doc/.xls/.ppt 需下载后用 Office/WPS 打开。若想保留完整版式，建议另存为 PDF 再上传。</div>';
     }
     if (f.kind === 'link') html += '<input id="lib-url" type="text" placeholder="https://…（网址）" value="' + esc(f.url || '') + '" style="margin-top:8px">';
     if (f.kind === 'note') html += '<textarea id="lib-text" placeholder="笔记内容" style="margin-top:8px;min-height:120px">' + esc(f.text || '') + '</textarea>';
-    html += '<div class="row" style="margin-top:8px">' +
-      (fixedFolder ? '' : sel('lib-folder-sel', folderOptions(true, '不归属文件夹'), f.folderId, 'max-width:220px')) +
+    html += '<div class="row" style="margin-top:8px"><span class="mut">归属</span>' +
+      (fixedFolder ? chip('📁 ' + fixedFolder.name) : sel('lib-folder-sel', folderOptions(true, '不归属文件夹（未归档）'), f.folderId, 'flex:1;min-width:200px;max-width:280px')) +
       '<input id="lib-tags" type="text" placeholder="标签，空格分隔，如 高数 公式" value="' + esc(f.tags || '') + '" style="flex:1;min-width:150px"></div>';
+    if (fixedFolder) html += '<div class="mut" style="margin-top:4px">保存后归入「' + esc(fixedFolder.name) + '」；如需换位置，保存后在资料卡片点「移动」。</div>';
     html += '<input id="lib-note" type="text" placeholder="备注（可选）" value="' + esc(f.note || '') + '" style="margin-top:8px">';
     var fid = fixedFolder ? fixedFolder.id : f.folderId;
     var qs = fid ? store.questions.filter(function (q) { return (q.folderId || '') === fid; }) : [];
@@ -1836,7 +2170,8 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     if (t.status === 'finished') html += btn('放弃', 'timerReset');
     if (busy) html += btn('✕ 放弃并重置', 'timerReset', null, 'bad');
     html += '</div></div>';
-    html += '<div class="card"><div class="card-title"><span>使用说明</span></div><div class="mut">① 正计时：自由学习，随时结束；倒计时：番茄钟<br>② 可绑定文件夹，不选则记为「自由学习」<br>③ 结束/到时后自动计入统计<br>④ 暂停期间不计时</div></div>';
+    html += '<div class="card"><div class="card-title"><span>使用说明</span></div><div class="mut">① 正计时：自由学习，随时结束；倒计时：番茄钟<br>② 可绑定文件夹，不选则记为「自由学习」<br>③ 结束/到时后自动计入统计<br>④ 暂停期间不计时<br>⑤ 网页外学习（看书/上课/其他 App）用下方「补录」记录</div></div>';
+    html += manualCard();
     return html;
   }
   function pageStats() {
@@ -1884,7 +2219,43 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     html += '<div class="card"><div class="card-title"><span>🕑 最近学习时刻</span></div>' +
       (v.recents.length === 0 ? '<div class="empty">暂无记录</div>' :
         v.recents.slice(0, 10).map(function (l) { return '<div class="row" style="margin-top:6px">' + chip(fmtDate(l.at) + ' ' + fmtClock(l.at)) + '<span class="grow" style="font-size:13px">' + esc(l.folder) + '</span><span class="mut">' + fmtLong(l.seconds) + '</span></div>'; }).join('')) + '</div>';
-    return html + '</div></div>';
+    return html + '</div></div>' + manualCard();
+  }
+  function sessionFab() {
+    var s = ui.session;
+    if (s.active) return '<button class="fab fab-on" data-act="sessionStop">⏹ 结束学习 <span id="fab-time">' + fmtHMS(s.elapsed) + '</span></button>';
+    return '<button class="fab" data-act="sessionStart" title="看纸质书 / 上课 / 用其他 App 时，也用这个开始记录">▶ 开始学习</button>';
+  }
+  function sessionModal() {
+    if (!ui.sessionAsk) return '';
+    var s = ui.session;
+    var defMin = Math.max(1, Math.round(s.elapsed / 60));
+    return '<div class="modal"><div class="modal-card">' +
+      '<div class="card-title"><span>结束学习 · 记录这段时间</span></div>' +
+      '<div class="mut">本次 ' + fmtLong(s.elapsed) + '（开始于 ' + fmtClock(s.startAt) + '）· 记入今天</div>' +
+      '<div class="row" style="margin-top:10px">' +
+      sel('s-folder', folderOptions(true, '不归属文件夹（记为网页外学习）'), s.folderId, 'flex:1;min-width:200px') +
+      sel('s-type', SESSION_TYPES.map(function (t) { return [t, t]; }), s.type, 'max-width:140px') +
+      '</div>' +
+      '<div class="row" style="margin-top:8px"><input id="s-min" type="number" min="1" max="1440" value="' + defMin + '" style="width:100px"><span class="mut">分钟（默认=实际时长，可改）</span></div>' +
+      '<input id="s-note" type="text" placeholder="备注（可选），如：教材第 3 章" style="margin-top:8px">' +
+      '<div class="row" style="margin-top:12px">' + btn('记录', 'sessionSave', null, 'ok') + btn('放弃', 'sessionCancel', null, 'bad') + '</div>' +
+      '</div></div>';
+  }
+  function doneAskRow(it) {
+    if (!ui.itemDoneAsk || ui.itemDoneAsk.id !== it.id) return '';
+    return '<div class="askrow"><div style="font-weight:600">「' + esc(itemTitle(it)) + '」实际用了多少分钟？</div>' +
+      '<div class="row" style="margin-top:6px"><input id="ask-min" type="number" min="0" max="1440" value="' + esc(ui.itemDoneAsk.minutes) + '" style="width:100px"><span class="mut">分钟（0 = 只完成，不记时长）</span>' +
+      btn('确认完成', 'itemDoneConfirm', it.id, 'ok', 'btn-sm') + btn('不记时长', 'itemDoneSkip', it.id, null, 'btn-sm') + btn('取消', 'itemDoneCancel', null, null, 'btn-sm') + '</div></div>';
+  }
+  function previewModal() {
+    if (!ui.preview) return '';
+    return '<div class="modal"><div class="modal-card">' +
+      '<div class="card-title"><span>📄 ' + esc(ui.preview.title) + '</span></div>' +
+      (ui.preview.note ? '<div class="mut">' + esc(ui.preview.note) + '</div>' : '') +
+      '<div style="margin-top:10px;max-height:62vh;overflow:auto;font-size:13px;line-height:1.7">' + ui.preview.html + '</div>' +
+      '<div class="row" style="margin-top:12px">' + btn('下载原文件', 'libDownload', ui.preview.id, null) + btn('关闭', 'previewClose', null, 'p') + '</div>' +
+      '</div></div>';
   }
   function render() {
     var app = document.getElementById('app');
@@ -1903,6 +2274,7 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     else body = pageHome(v);
     app.innerHTML = header(v) + body +
       '<div class="mut" style="text-align:center;margin:4px 0 18px">学习空间 ' + APP_VERSION + ' · 数据保存在本机浏览器 · 建议每周导出备份</div>' +
+      sessionFab() + sessionModal() + previewModal() +
       (ui.toast ? '<div class="toast">' + esc(ui.toast) + '</div>' : '');
     if (ui.lib.keepFocus) {
       var fi = document.getElementById(ui.lib.keepFocus);
@@ -2004,6 +2376,24 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     var imp2 = document.createElement('input');
     imp2.type = 'file'; imp2.accept = '.json,application/json'; imp2.id = 'lib-import'; imp2.style.display = 'none';
     document.body.appendChild(imp2);
+    /* 刷新后恢复未结束的学习会话 */
+    try {
+      var raw = localStorage.getItem('learnhub.session');
+      if (raw) {
+        var ss = JSON.parse(raw);
+        if (ss && ss.startAt && (Date.now() - ss.startAt) < 12 * 3600 * 1000) {
+          ui.session.active = true; ui.session.startAt = ss.startAt;
+          ui.session.elapsed = Math.round((Date.now() - ss.startAt) / 1000);
+          startSessionTick();
+        } else { localStorage.removeItem('learnhub.session'); }
+      }
+    } catch (e) {}
+    /* 手机主屏快捷方式：打开 .../learnhub/#start 直接开始学习 */
+    if (typeof location !== 'undefined' && location.hash === '#start' && !ui.session.active) {
+      ui.session.active = true; ui.session.startAt = Date.now(); ui.session.elapsed = 0;
+      try { localStorage.setItem('learnhub.session', JSON.stringify({ startAt: ui.session.startAt })); } catch (e) {}
+      startSessionTick();
+    }
     render();
   }
   ACT.listAddItemHere = function (fid) {
@@ -2015,7 +2405,13 @@ input,input[type=text],input[type=number],textarea,select,.option,.tag{backgroun
     ui.page = 'list'; ui.listId = l.id; ui.itemForm = null;
     render(); toast('清单已创建，添加任务吧');
   };
-  try { if (typeof window !== 'undefined') window.__learnhub = { ui: ui, render: render, ACT: ACT, get store() { return store; } }; } catch (e) {}
+  try {
+    if (typeof window !== 'undefined') window.__learnhub = {
+      ui: ui, render: render, ACT: ACT, get store() { return store; },
+      unzip: unzip, unzipText: unzipText, parseDocx: parseDocx, parseXlsx: parseXlsx, parsePptx: parsePptx,
+      extOf: extOf, isOfficeNew: isOfficeNew, isOfficeOld: isOfficeOld, isInlineOk: isInlineOk
+    };
+  } catch (e) {}
   if (typeof document !== 'undefined' && typeof localStorage !== 'undefined') {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
     else boot();
